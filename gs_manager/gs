@@ -1,0 +1,432 @@
+#!/usr/bin/python
+
+import copy
+import json
+import os
+import pprint
+import re
+import subprocess
+import sys
+import time
+
+import click
+
+GS_CUSTOM = 'custom'
+GS_MC = 'minecraft'
+
+GS_TYPES = [GS_CUSTOM, GS_MC]
+
+# overridable default configs to use if no CLI options or config exists
+DEFAULT_CONFIGS = {
+    'name': 'gameserver',
+    'user': 'root',
+    'delay_start': 3,
+    'delay_stop': 10,
+    'delay_prestop': 30,
+    'delay_restart': 3,
+    'type': GS_CUSTOM,
+    'history': 1024
+}
+
+
+@click.group(chain=True)
+@click.option('-c', '--config',
+              type=click.Path(),
+              help=('Path to JSON config file. Config file options override '
+                    'CLI ones. Ignored if file does not exist.'),
+              default='.gs_config.json')
+@click.option('-s', '--save',
+              is_flag=True,
+              help=('Save config to JSON file after loading'))
+@click.option('-n', '--name',
+              type=str,
+              help='Name of gameserver screen service, must be unique')
+@click.option('-u', '--user',
+              type=str,
+              help='User to run gameserver as')
+@click.option('-ds', '--delay_start',
+              type=int,
+              help=('Time (in seconds) to wait after service has started to '
+                    'verify'))
+@click.option('-dt', '--delay_stop',
+              type=int,
+              help=('Time (in seconds) to wait after service has stopped to '
+                    'verify'))
+@click.option('-dp', '--delay_prestop',
+              type=int,
+              help=('Time (in seconds) before stopping the server to allow '
+                    'notifing users.'),)
+@click.option('-dr', '--delay_restart',
+              type=int,
+              help=('Time (in seconds) to wait after service has stop before '
+                    'restarting'))
+@click.option('-t', '--gs_type',
+              type=click.Choice(GS_TYPES),
+              help='Type of gameserver to run')
+@click.option('-c', '--command',
+              type=str,
+              help='Start up command. Only for Custom server type')
+@click.option('-sc', '--stop_command',
+              type=str,
+              help='Command to stop server. Only for Custom server type')
+@click.option('-yc', '--say_command',
+              type=str,
+              help='Command format to send broadcast to sever. Only for Custom server type')
+@click.option('-h', '--history',
+              type=int,
+              help='Number of lines to show in screen for history')
+@click.option('-p', '--path',
+              type=click.Path(),
+              help='Starting directory. If empty, it uses current directory')
+@click.option('-b', '--backup_dir',
+              type=click.Path(),
+              help='Directory to backup server to. If empty, backups disabled')
+@click.option('-d', '--debug',
+              is_flag=True)
+@click.pass_context
+def cli(context, config, save, name, user,
+        delay_start, delay_stop, delay_prestop, delay_restart,
+        gs_type, command, stop_command, say_command,
+        history, path, backup_dir,
+        debug):
+
+    context.obj['debug'] = debug
+    dprint('config init')
+
+    # load defaults
+    context.obj.update(DEFAULT_CONFIGS)
+
+    load_local_config(**locals())
+
+    # initalize CLI variables
+    context.obj['debug'] = context.obj['debug'] or debug
+
+    load_cli_config(**locals())
+
+    verify_config()
+
+    # save configs back to JSON file
+    dprint('final config:')
+    dprint(context.obj)
+    if save:
+        save_local_config()
+
+
+@cli.command()
+@click.option('-n', '--no_wait',
+              is_flag=True)
+@click.pass_context
+def start(context, no_wait):
+    """ starts gameserver """
+    dprint('start begin')
+
+    if is_running():
+        click.secho('{} is already running'
+                    .format(context.obj['name']), fg='red')
+        context.exit(1)
+    else:
+        click.echo('starting {}...'.format(context.obj['name']))
+        as_user('cd {} && screen -h {} -dmS {} {}'
+                .format(context.obj['path'], context.obj['history'],
+                        context.obj['name'], get_command()))
+        if not no_wait:
+            click.echo('waiting {} seconds before checking if {} is running...'
+                       .format(context.obj['delay_start'], context.obj['name']))
+            time.sleep(context.obj['delay_start'])
+
+        if is_running():
+            click.secho('{} is running'.format(context.obj['name']), fg='green')
+        else:
+            click.secho('could not start {}'.format(context.obj['name']), fg='red')
+            context.exit(1)
+
+
+@cli.command()
+@click.option('-f', '--force',
+              is_flag=True)
+@click.pass_context
+def stop(context, force):
+    """ stop gameserver """
+    dprint('stop begin')
+
+    if is_running():
+        if context.obj['delay_prestop'] > 0 and not force:
+            click.echo('notifiying users {} is stopping in {} seconds...'
+                       .format(context.obj['name'], context.obj['delay_prestop']))
+            context.invoke(say, message='server is shutting down in {} seconds...'
+                                        .format(context.obj['delay_prestop']))
+            time.sleep(context.obj['delay_prestop'])
+        click.echo('stopping {}...'.format(context.obj['name']))
+
+        stop_command = ''
+        if context.obj['type'] == GS_MC:
+            stop_command = 'stop'
+        else:
+            stop_command = context.obj['stop_command']
+
+        if force:
+            kill_server()
+        else:
+            context.invoke(command, command_string=stop_command, do_print=False)
+            click.echo('waiting {} seconds before checking if {} is stopped...'
+                       .format(context.obj['delay_stop'], context.obj['name']))
+            time.sleep(context.obj['delay_stop'])
+
+        if is_running():
+            click.secho('{} could not be stopped'.format(context.obj['name'], fg='red'))
+            context.exit(1)
+        else:
+            click.secho('{} was stopped'.format(context.obj['name'], fg='green'))
+    else:
+        click.secho('{} is not running'
+                    .format(context.obj['name']), fg='red')
+        context.exit(1)
+
+
+@cli.command()
+@click.pass_context
+def restart(context):
+    """ restarts gameserver"""
+    dprint('restart begin')
+
+    if is_running():
+        context.forward(stop)
+    context.forward(start)
+
+
+@cli.command()
+@click.pass_context
+def status(context):
+    """ checks if gameserver is runing or not """
+    if is_running():
+        click.secho('{} is running'.format(context.obj['name']), fg='green')
+    else:
+        click.secho('{} is not running'.format(context.obj['name']), fg='red')
+
+
+@cli.command()
+@click.argument('command_string')
+@click.pass_context
+def command(context, command_string, do_print=True):
+    """ runs console command """
+    dprint('command begin')
+
+    command_string = "screen -p 0 -S {} -X eval 'stuff \"{}\"\015'" \
+        .format(context.obj['name'], command_string)
+    output = as_user(command_string)
+
+    if do_print:
+        click.echo(output)
+    return output
+
+
+@cli.command()
+@click.argument('message')
+@click.pass_context
+def say(context, message):
+    """ broadcasts a message to gameserver """
+    dprint('say begin')
+
+    command_format = '{}'
+    if context.obj['type'] == GS_MC:
+        command_format = 'say {}'
+    else:
+        command_format = context.obj['say_command']
+
+    context.invoke(command, command_string=command_format.format(message))
+
+
+@cli.command()
+@click.pass_context
+def attach(context):
+    """ attachs to gameserver screen """
+    if is_running():
+        as_user('screen -x {}'.format(context.obj['name']))
+    else:
+        click.secho('{} is not running'.format(context.obj['name']), fg='red')
+        context.exit(1)
+
+
+def load_local_config(context, path, config, **kwargs):
+    """ verifys working path and loads local config settings """
+    # verify working path
+    if path is not None:
+        if os.path.isdir(path):
+            context.obj['path'] = os.path.abspath(path)
+        else:
+            raise click.BadParameter('path does not exist')
+    else:
+        path = os.getcwd()
+        loop_count = 0
+        found = False
+        while not found and (path != '/' and loop_count < 5):
+            dprint('checking path {}'.format(path))
+            if os.path.isfile(os.path.join(path, config)):
+                context.obj['path'] = path
+                found = True
+            loop_count += 1
+            path = os.path.abspath(os.path.join(path, os.pardir))
+
+        if not found:
+            context.obj['path'] = os.getcwd()
+    dprint('using config path {}'.format(context.obj['path']))
+
+    # verify local config file and read it
+    config_string = None
+    if not os.path.isfile(config):
+        config = os.path.join(context.obj['path'], config)
+
+    if os.path.isfile(config):
+        with open(config, 'r') as config_file:
+            config_string = config_file.read().replace('\n', '')
+
+    # process config file
+    if config_string is not None:
+        try:
+            configs = json.loads(config_string)
+            dprint('local config:')
+            dprint(configs)
+        except json.JSONDecodeError:
+            dprint('invalid configuration file')
+        else:
+            context.obj.update(configs)
+
+
+def load_cli_config(context, name, user,
+                    delay_start, delay_stop, delay_prestop, delay_restart,
+                    history, gs_type, command, stop_command, say_command, backup_dir,
+                    **kwargs):
+    if name is not None:
+        context.obj['name'] = name
+    if user is not None:
+        context.obj['user'] = user
+    if delay_start is not None:
+        context.obj['delay_start'] = delay_start
+    if delay_stop is not None:
+        context.obj['delay_stop'] = delay_stop
+    if delay_prestop is not None:
+        context.obj['delay_prestop'] = delay_prestart
+    if delay_restart is not None:
+        context.obj['delay_restart'] = delay_restart
+    if history is not None:
+        context.obj['history'] = history
+    if gs_type is not None:
+        context.obj['type'] = gs_type
+    if command is not None:
+        context.obj['command'] = command
+    if stop_command is not None:
+        context.obj['stop_command'] = stop_command
+    if say_command is not None:
+        context.obj['say_command'] = say_command
+    if backup_dir is not None:
+        context.obj['backup_dir'] = backup_dir
+
+
+def verify_config():
+    """ verfies the context config """
+    context = click.get_current_context()
+
+    # verify backup path
+    if context.obj.get('backup_dir') is not None:
+        if os.path.isdir(context.obj['backup_dir']):
+            context.obj['backup_dir'] = os.path.abspath(context.obj['backup_dir'])
+        elif os.path.join(context.obj['path'], context.obj['backup_dir']):
+            context.obj['backup_dir'] = os.path.join(context.obj['path'], context.obj['backup_dir'])
+        else:
+            raise click.BadParameter('backup_dir does not exist')
+
+    # verify command param
+    if context.obj['type'] == GS_CUSTOM:
+        if context.obj.get('command') is None:
+            raise click.BadParameter('command is required if server type if custom')
+        if context.obj.get('stop_command') is None:
+            raise click.BadParameter('stop_command is required if server type if custom')
+        if context.obj.get('say_command') is None:
+            raise click.BadParameter('say_command is required if server type if custom')
+
+
+def save_local_config():
+    """ saves current context back to local config """
+    context = click.get_current_context()
+    dprint('saving config...')
+    config_copy = copy.deepcopy(context.obj)
+    # delete CLI only configs
+    del config_copy['path']
+    with open(os.path.join(context.obj['path'], config), 'w') as config_file:
+        config_file.write(json.dumps(config_copy, sort_keys=True,
+                                     indent=4, separators=(',', ': ')))
+
+
+def dprint(msg):
+    """ prints message out to console if debug is on """
+    context = click.get_current_context()
+    if context.obj['debug']:
+        if isinstance(msg, dict):
+            msg = pprint.pformat(msg)
+        click.secho(str(msg), fg='cyan')
+
+
+def as_user(command):
+    """ runs command as configurated user """
+    context = click.get_current_context()
+    user = subprocess.getoutput('whoami').strip()
+
+    if user != context.obj['user']:
+        command = 'sudo su - {} -c "{}"' \
+            .format(context.obj['user'], command.replace('"', '\\"'))
+
+    dprint('running command \'{}\''.format(command))
+    output = subprocess.getoutput(command).strip()
+    dprint(output)
+    return output
+
+
+def get_command(base_only=False):
+    """ gets main start command for gameserver """
+    context = click.get_current_context()
+
+    if context.obj['type'] == GS_MC:
+        raise Exception('TODO')
+    else:
+        command = context.obj['command']
+        if base_only:
+            command = command.split(' ')[0].split('/')[-1]
+        return command
+
+
+def kill_server():
+    """ forcibly kills server process """
+    context = click.get_current_context()
+    # grab screen name from gameserver name
+    screen = as_user('screen -ls | grep {}'
+                     .format(context.obj['name'])).strip()
+
+    if screen != '':
+        pid = re.match('\d+', screen).group()
+        as_user('kill -9 {}'.format(pid))
+
+
+def is_running():
+    """ checks if gameserver is running """
+    context = click.get_current_context()
+
+    # grab screen name from gameserver name
+    screen = as_user('screen -ls | grep {}'
+                     .format(context.obj['name'])).strip()
+
+    # check the screen exists
+    is_running = (screen != '' and screen is not None)
+
+    # check the original command is actually running in screen
+    if is_running:
+        pid = re.match('\d+', screen).group()
+        is_running = (is_running and
+                      (as_user('ps -el | grep {} | grep \'{}\''
+                               .format(pid, get_command(True)[:15])) != ''))
+
+    # TODO: Query server directly...
+    return is_running
+
+
+if __name__ == '__main__':
+    cli(obj={})
