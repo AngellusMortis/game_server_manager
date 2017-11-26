@@ -3,32 +3,34 @@
 
 """The setup script."""
 
-from setuptools import setup, find_packages
+from os import path
 
-with open('README.rst') as readme_file:
+from setuptools import find_packages, setup
+
+import versioneer
+
+BASE_DIR = path.abspath(path.dirname(__file__))
+
+with open(path.join(BASE_DIR, 'README.rst')) as readme_file:
     readme = readme_file.read()
 
-with open('HISTORY.rst') as history_file:
+with open(path.join(BASE_DIR, 'HISTORY.rst')) as history_file:
     history = history_file.read()
 
-requirements = [
-    'Click>=6.0',
-    # TODO: put package requirements here
-]
+with open(path.join(BASE_DIR, 'requirements.in')) as f:
+    requirements = f.read().split('\n')
+
+with open(path.join(BASE_DIR, 'test-requirements.in')) as f:
+    test_requirements = f.read().split('\n')
 
 setup_requirements = [
     'pytest-runner',
-    # TODO(AngellusMortis): put setup requirements (distutils extensions, etc.) here
-]
-
-test_requirements = [
-    'pytest',
-    # TODO: put package test requirements here
 ]
 
 setup(
     name='game_server_manager',
-    version='0.1.0',
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
     description="Simple command to manage and control various types of game servers.",
     long_description=readme + '\n\n' + history,
     author="Christopher Bailey",
@@ -50,13 +52,13 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Natural Language :: English',
-        "Programming Language :: Python :: 2",
+        'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.6',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
     ],
     test_suite='tests',
     tests_require=test_requirements,

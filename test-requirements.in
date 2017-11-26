@@ -1,0 +1,9 @@
+coverage
+flake8
+mock
+pip-tools
+pytest
+pytest-cov
+tox
+twine
+versioneer

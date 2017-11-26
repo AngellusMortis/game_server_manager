@@ -78,7 +78,7 @@ Ready to contribute? Here's how to set up `game_server_manager` for local develo
 
 5. When you're done making changes, check that your changes pass flake8 and the tests, including testing other Python versions with tox::
 
-    $ flake8 game_server_manager tests
+    $ flake8 gs_manager tests
     $ python setup.py test or py.test
     $ tox
 
@@ -104,11 +104,3 @@ Before you submit a pull request, check that it meets these guidelines:
 3. The pull request should work for Python 2.6, 2.7, 3.3, 3.4 and 3.5, and for PyPy. Check
    https://travis-ci.org/AngellusMortis/game_server_manager/pull_requests
    and make sure that the tests pass for all supported Python versions.
-
-Tips
-----
-
-To run a subset of tests::
-
-$ py.test tests.test_game_server_manager
-

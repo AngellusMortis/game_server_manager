@@ -1,11 +1,14 @@
 # Config file for automatic testing at travis-ci.org
 # This file will be regenerated if you run travis_pypi_setup.py
 
+# env:
+#   global:
+#     - CC_TEST_REPORTER_ID=a6c808a99cff3b7f3aa5942cca8d168018b41e5df80a8b3d24831327c7deff2e
 language: python
 python:
+  - 3.6
   - 3.5
   - 3.4
-  - 3.3
   - 2.7
   - 2.6
 
@@ -15,15 +18,10 @@ install: pip install -U tox-travis
 # command to run tests, e.g. python setup.py test
 script: tox
 
-# After you create the Github repo and add it to Travis, run the
-# travis_pypi_setup.py script to finish PyPI deployment setup
-deploy:
-  provider: pypi
-  distributions: sdist bdist_wheel
-  user: AngellusMortis
-  password:
-    secure: PLEASE_REPLACE_ME
-  on:
-    tags: true
-    repo: AngellusMortis/game_server_manager
-    python: 2.7
+before_script:
+  - if [[ $TRAVIS_PYTHON_VERSION == 3.6 ]]; then curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter; fi
+  - if [[ $TRAVIS_PYTHON_VERSION == 3.6 ]]; then chmod +x ./cc-test-reporter; fi
+  - if [[ $TRAVIS_PYTHON_VERSION == 3.6 ]]; then ./cc-test-reporter before-build; fi
+
+after_script:
+  - if [[ $TRAVIS_PYTHON_VERSION == 3.6 ]]; then ./cc-test-reporter after-build --exit-code $TRAVIS_TEST_RESULT; fi

@@ -1,23 +1,28 @@
 import re
 import subprocess
+import getpass
+import shlex
+import sys
 
 
 def to_pascal_case(name):
-    return name.replace('_', ' ').title().replace(' ', '')
+    return to_snake_case(name).replace('_', ' ').title().replace(' ', '')
 
 
 def to_snake_case(name):
-    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
+    return re.sub('([a-z])([A-Z])', r'\1_\2', name).lower()
 
 
-def run_as_user(user, command):
-    current_user = subprocess.getoutput('whoami').strip()
+def run_as_user(user, command, sudo_format='sudo su - {} -c "{}"'):
+    current_user = getpass.getuser()
 
     if current_user != user:
         command = command.replace('"', '\\"')
-        command = command.replace('$', '\$')
-        command = 'sudo su - {} -c "{}"'.format(user, command)
+        command = sudo_format.format(user, command)
 
-    output = subprocess.getoutput(command).strip()
+    args = shlex.split(command)
+    output = subprocess.check_output(args).strip()
+
+    if not isinstance(output, str):
+        output = output.decode(sys.getdefaultencoding())
     return output

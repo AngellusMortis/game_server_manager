@@ -1,0 +1,3 @@
+[run]
+omit =
+    gs_manager/_version.py
