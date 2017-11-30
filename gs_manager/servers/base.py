@@ -2,9 +2,9 @@ import logging
 import pprint
 import re
 import time
+from subprocess import CalledProcessError
 
 import click
-
 from gs_manager.utils import run_as_user
 
 
@@ -55,11 +55,19 @@ class Base(object):
         """ checks if gameserver is running """
 
         # grab screen name from gameserver name
-        screen = self.run_as_user('screen -ls | grep {}'
-                                  .format(self.options['name'])).strip()
+        try:
+            screen = self.run_as_user('screen -ls | grep {}'
+                                      .format(self.options['name'])).strip()
+        except CalledProcessError as ex:
+            if ex.output == '':
+                is_running = False
+            else:
+                raise click.ClickException(
+                    'something went wrong checking server status')
+        else:
+            # check the screen exists
+            is_running = (screen != '' and screen is not None)
 
-        # check the screen exists
-        is_running = (screen != '' and screen is not None)
         self.debug('is_running: {}'.format(is_running))
 
         # check the original command is actually running in screen

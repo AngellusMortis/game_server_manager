@@ -28,10 +28,11 @@ def run_as_user(user, command, sudo_format='sudo su - {} -c "{}"'):
     if stdout is None:
         stdout = ''
 
+    if not isinstance(stdout, str):
+        stdout = stdout.decode(sys.getdefaultencoding())
+    stdout = stdout.strip()
+
     if process.returncode == 0:
-        if not isinstance(stdout, str):
-            stdout = stdout.decode(sys.getdefaultencoding())
-        stdout = stdout.strip()
         return stdout
 
     raise subprocess.CalledProcessError(

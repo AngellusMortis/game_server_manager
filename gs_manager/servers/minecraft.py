@@ -1,14 +1,9 @@
 import click
 
-from gs_manager.servers.custom import Custom
+from gs_manager.servers.java import Java
 
 
-class Minecraft(Custom):
-    command_format = ('{} -Xmx{}M -Xms{}M -XX:+UseConcMarkSweepGC '
-                      '-XX:+CMSIncrementalPacing -XX:ParallelGCThreads={} '
-                      '-XX:+AggressiveOpts -Dfml.queryResult=confirm '
-                      '-jar {} nogui')
-
+class Minecraft(Java):
     def __init__(self, *args, **kwargs):
         super(Minecraft, self).__init__(*args, **kwargs)
 
@@ -17,20 +12,27 @@ class Minecraft(Custom):
 
     @staticmethod
     def defaults():
-        defaults = Custom.defaults()
+        defaults = Java.defaults()
         defaults.update({
             'start_memory': 1024,
             'max_memory': 4096,
             'thread_count': 2,
             'server_jar': 'minecraft_server.jar',
             'java_path': 'java',
+            'java_args': ('-Xmx{}M -Xms{}M -XX:+UseConcMarkSweepGC '
+                          '-XX:+CMSIncrementalPacing -XX:ParallelGCThreads={} '
+                          '-XX:+AggressiveOpts -Dfml.queryResult=confirm'),
+            'extra_args': 'nogui',
         })
         return defaults
 
+
     @staticmethod
     def excluded_from_save():
-        parent = Custom.excluded_from_save()
+        parent = Java.excluded_from_save()
         return parent + [
+            'extra_args',
+            'java_args',
             'command',
         ]
 
@@ -62,12 +64,18 @@ class Minecraft(Custom):
     @click.pass_obj
     def start(self, no_verify, *args, **kwargs):
         """ starts Minecraft server """
-        self.options['command'] = self.command_format.format(
-            self.options['java_path'],
+
+        java_args = self.options['java_args'].format(
             self.options['max_memory'],
             self.options['start_memory'],
             self.options['thread_count'],
+        )
+
+        self.options['command'] = self.command_format.format(
+            self.options['java_path'],
+            java_args,
             self.options['server_jar'],
+            self.options['extra_args'],
         )
         self.invoke(
             super(Minecraft, self).start, no_verify=no_verify)
