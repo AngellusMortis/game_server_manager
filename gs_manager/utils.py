@@ -21,8 +21,18 @@ def run_as_user(user, command, sudo_format='sudo su - {} -c "{}"'):
         command = sudo_format.format(user, command)
 
     args = shlex.split(command)
-    output = subprocess.check_output(args).strip()
+    process = subprocess.Popen(
+        args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    stdout, stderr = process.communicate()
 
-    if not isinstance(output, str):
-        output = output.decode(sys.getdefaultencoding())
-    return output
+    if stdout is None:
+        stdout = ''
+
+    if process.returncode == 0:
+        if not isinstance(stdout, str):
+            stdout = stdout.decode(sys.getdefaultencoding())
+        stdout = stdout.strip()
+        return stdout
+
+    raise subprocess.CalledProcessError(
+        process.returncode, command, stdout)

@@ -7,6 +7,12 @@ import copy
 import inspect
 import json
 import os
+from subprocess import CalledProcessError
+
+try:
+    from json import JSONDecodeError as JSONError
+except ImportError:
+    JSONError = ValueError
 
 import click
 from gs_manager import servers
@@ -17,13 +23,13 @@ class GSCommand(click.MultiCommand):
     context = None
     _config = None
     _commands = None
-    _server = None
 
     @property
     def commands(self):
         if self._commands is None:
             possible_commands = inspect.getmembers(self.server)
 
+            print(possible_commands)
             commands = {}
             for command in possible_commands:
                 if isinstance(command[1], click.Command):
@@ -47,15 +53,15 @@ class GSCommand(click.MultiCommand):
             raise click.ClickException('context not initalized yet')
 
         if self._config is None:
-            cli_config = self._get_cli_config()
             file_config, config_path = self._get_file_config()
+            cli_config = self._get_cli_config()
 
             server_type = cli_config.get('type') or \
                 file_config.get('type') or 'custom'
 
             config = self._get_default_config(server_type)
             config.update(file_config)
-            config.update(self._get_cli_config())
+            config.update(cli_config)
             self._save_config_file(config_path, config)
             self._config = config
 
@@ -65,7 +71,13 @@ class GSCommand(click.MultiCommand):
         if server_type is None:
             server_type = self.config['type']
 
-        return getattr(servers, to_pascal_case(server_type))
+        try:
+            server = getattr(servers, to_pascal_case(server_type))
+        except AttributeError:
+            raise click.BadParameter(
+                'server of type "{}" does not exist'.format(server_type))
+        else:
+            return server
 
     def _get_cli_config(self):
         params = self.context.params
@@ -90,7 +102,7 @@ class GSCommand(click.MultiCommand):
         config_string = self._read_config_file(config_path)
         try:
             config = json.loads(config_string)
-        except json.JSONDecodeError:
+        except JSONError:
             raise click.ClickException('invalid configuration file')
 
         return config, config_path
@@ -115,10 +127,11 @@ class GSCommand(click.MultiCommand):
         path = os.getcwd()
 
         search_path = path
-        loop_count = 0
 
-        while search_path != '/' and loop_count < 5:
-            if os.path.isfile(os.path.join(path, config_filename)):
+        for x in range(5):
+            if search_path == '/':
+                break
+            if os.path.isfile(os.path.join(search_path, config_filename)):
                 path = search_path
                 break
             search_path = os.path.abspath(os.path.join(search_path, os.pardir))
@@ -135,9 +148,6 @@ class GSCommand(click.MultiCommand):
         return config_string
 
     def _save_config_file(self, config_path, config):
-        if self.context is None:
-            raise click.ClickException('context not initalized yet')
-
         if self.context.params.get('save'):
             defaults = self._get_default_config(config['type'])
             config_copy = copy.deepcopy(config)
@@ -156,10 +166,14 @@ class GSCommand(click.MultiCommand):
             config_json = json.dumps(
                 config_copy, sort_keys=True, indent=4, separators=(',', ': '))
 
-            run_as_user(
-                config['user'],
-                'echo \'{}\' > \'{}\''
-                .format(config_json, config_path))
+            try:
+                run_as_user(
+                    config['user'],
+                    'echo \'{}\' > \'{}\''
+                    .format(config_json, config_path))
+            except CalledProcessError as ex:
+                raise click.ClickException(
+                    'could not save config file (perhaps bad user?)')
 
     def list_commands(self, context):
         self.context = context

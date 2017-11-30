@@ -1,7 +1,9 @@
 import getpass
-from mock import patch
+import subprocess
 
+import pytest
 from gs_manager.utils import run_as_user, to_pascal_case, to_snake_case
+from mock import Mock, patch
 
 
 def test_to_snake_case():
@@ -36,16 +38,25 @@ def test_to_pascal_case():
 
 @patch('gs_manager.utils.subprocess')
 def test_run_as_user_same_user(mock_subprocess):
+    mock_popen = Mock()
+    mock_popen.communicate.return_value = (None, None)
+    mock_popen.returncode = 0
+    mock_subprocess.Popen.return_value = mock_popen
     user = getpass.getuser()
     run_as_user(user, 'ls')
 
-    assert mock_subprocess.check_output.called_with('ls')
+    assert mock_subprocess.Popen.called_with(
+        'ls', stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
 
 @patch('gs_manager.utils.subprocess')
 def test_run_as_user_strip_response(mock_subprocess):
     expected = 'test'
-    mock_subprocess.check_output.return_value = '{}  \n'.format(expected)
+
+    mock_popen = Mock()
+    mock_popen.communicate.return_value = ('{}  \n'.format(expected), None)
+    mock_popen.returncode = 0
+    mock_subprocess.Popen.return_value = mock_popen
 
     user = getpass.getuser()
     ouput = run_as_user(user, 'ls')
@@ -55,17 +66,28 @@ def test_run_as_user_strip_response(mock_subprocess):
 
 @patch('gs_manager.utils.subprocess')
 def test_run_as_user_different_user(mock_subprocess):
+    mock_popen = Mock()
+    mock_popen.communicate.return_value = (None, None)
+    mock_popen.returncode = 0
+    mock_subprocess.Popen.return_value = mock_popen
+
     user = 'root'
     command = 'ls'
     expected = 'sudo su - {} -c {}'.format(user, command)
 
     run_as_user(user, command)
 
-    assert mock_subprocess.check_output.called_with(expected)
+    assert mock_subprocess.Popen.called_with(
+        expected, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
 
 @patch('gs_manager.utils.subprocess')
 def test_run_as_user_diffent_sudo(mock_subprocess):
+    mock_popen = Mock()
+    mock_popen.communicate.return_value = (None, None)
+    mock_popen.returncode = 0
+    mock_subprocess.Popen.return_value = mock_popen
+
     user = 'root'
     command = 'ls'
     sudo_format = 'echo {} "{}"'
@@ -73,7 +95,8 @@ def test_run_as_user_diffent_sudo(mock_subprocess):
 
     run_as_user(user, command, sudo_format=sudo_format)
 
-    assert mock_subprocess.check_output.called_with(expected)
+    assert mock_subprocess.Popen.called_with(
+        expected, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
 
 def test_run_as_user_output():
@@ -92,3 +115,10 @@ def test_run_as_user_output():
     for test in tests:
         output = run_as_user(user, test, sudo_format=sudo_format)
         assert output == '{} {}'.format(user, test)
+
+
+def test_run_as_user_bad_return():
+    user = getpass.getuser()
+
+    with pytest.raises(subprocess.CalledProcessError):
+        run_as_user(user, 'test')
