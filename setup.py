@@ -20,7 +20,7 @@ with open(path.join(BASE_DIR, 'HISTORY.rst')) as history_file:
 with open(path.join(BASE_DIR, 'requirements.in')) as f:
     requirements = f.read().split('\n')
 
-with open(path.join(BASE_DIR, 'test-requirements.in')) as f:
+with open(path.join(BASE_DIR, 'dev-requirements.in')) as f:
     test_requirements = f.read().split('\n')
 
 setup_requirements = [

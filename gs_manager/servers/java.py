@@ -1,17 +1,14 @@
 import click
 
-from gs_manager.servers.custom import Custom
+from gs_manager.servers.custom_screen import CustomScreen
 
 
-class Java(Custom):
+class Java(CustomScreen):
     command_format = ('{} {} -jar {} {}')
-
-    def __init__(self, *args, **kwargs):
-        super(Java, self).__init__(*args, **kwargs)
 
     @staticmethod
     def defaults():
-        defaults = Custom.defaults()
+        defaults = CustomScreen.defaults()
         defaults.update({
             'extra_args': '',
             'java_args': '',
@@ -21,7 +18,7 @@ class Java(Custom):
 
     @staticmethod
     def excluded_from_save():
-        parent = Custom.excluded_from_save()
+        parent = CustomScreen.excluded_from_save()
         return parent + [
             'command',
         ]
@@ -45,20 +42,33 @@ class Java(Custom):
     @click.option('-jp', '--java_path',
                   type=click.Path(),
                   help='Path to Java executable')
+    @click.option('-ea', '--extra_args',
+                  type=str,
+                  help=('To add to jar command'))
     @click.pass_obj
-    def start(self, no_verify, *args, **kwargs):
+    def start(self, no_verify, history, delay_start,
+              java_args, server_jar, java_path, extra_args):
         """ starts Minecraft server """
 
-        server_jar = self.options.get('server_jar')
+        self.debug_command('start', locals())
+        history = history or self.options.get('history')
+        delay_start = delay_start or self.options.get('delay_start')
+        java_args = java_args or self.options.get('java_args')
+        server_jar = server_jar or self.options.get('server_jar')
+        java_path = java_path or self.options.get('java_path')
+        extra_args = extra_args or self.options.get('extra_args')
 
         if server_jar is None:
             raise click.BadParameter('must provide a server_jar')
 
-        self.options['command'] = self.command_format.format(
-            self.options['java_path'],
-            self.options['java_args'],
-            self.options['server_jar'],
-            self.options['extra_args'],
+        command = self.command_format.format(
+            java_path,
+            java_args,
+            server_jar,
+            extra_args,
         )
         self.invoke(
-            super(Java, self).start, no_verify=no_verify)
+            super(Java, self).start, no_verify=no_verify,
+            history=history, delay_start=delay_start,
+            command=command
+        )

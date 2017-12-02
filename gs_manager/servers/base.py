@@ -1,8 +1,8 @@
 import logging
+import os
 import pprint
-import re
+import signal
 import time
-from subprocess import CalledProcessError
 
 import click
 from gs_manager.utils import run_as_user
@@ -14,7 +14,7 @@ class Base(object):
     def defaults():
         return {
             'config': '.gs_config.json',
-            'type': 'custom',
+            'type': 'custom_screen',
             'name': 'gameserver',
             'user': 'root',
         }
@@ -39,72 +39,191 @@ class Base(object):
 
         self.options = options
 
+    @property
+    def pid(self):
+        raise NotImplementedError()
+
+    @property
+    def running(self):
+        """ checks if gameserver is running """
+        return self.pid is not None
+
+    def _progressbar(self, seconds):
+        with click.progressbar(length=seconds) as waiter:
+            for item in waiter:
+                time.sleep(1)
+
     def invoke(self, method, *args, **kwargs):
         self.context.invoke(method, *args, **kwargs)
-
-    def run_as_user(self, command):
-        """ runs command as configurated user """
-
-        self.debug('running command \'{}\''.format(command))
-        output = run_as_user(self.options['user'], command)
-        self.debug(output)
-
-        return output
-
-    def is_running(self):
-        """ checks if gameserver is running """
-
-        # grab screen name from gameserver name
-        try:
-            screen = self.run_as_user('screen -ls | grep {}'
-                                      .format(self.options['name'])).strip()
-        except CalledProcessError as ex:
-            if ex.output == '':
-                is_running = False
-            else:
-                raise click.ClickException(
-                    'something went wrong checking server status')
-        else:
-            # check the screen exists
-            is_running = (screen != '' and screen is not None)
-
-        self.debug('is_running: {}'.format(is_running))
-
-        # check the original command is actually running in screen
-        if is_running:
-            pid = re.match('\d+', screen).group()
-            processes = self.run_as_user(
-                'ps -el | grep {} | awk \'{{print $4}}\''.format(pid))
-            processes = processes.split('\n')
-            return len(processes) == 2 and processes[0] == pid
-        return False
 
     def debug(self, message):
         """ prints message out to console if debug is on """
 
         if isinstance(message, (list, dict)):
             message = pprint.pformat(message)
-        message = str(message)
+        if not isinstance(message, str):
+            message = str(message)
 
         self.logger.debug(message)
         if self.options['debug']:
             click.secho(message, fg='cyan')
 
+    def debug_command(self, name, args=None):
+        self.debug('command: {}'.format(name))
+        self.debug('options:')
+        self.debug(self.options)
+        if args is not None:
+            self.debug('locals:')
+            self.debug(args)
+        self.debug('')
+
+    def run_as_user(self, command):
+        """ runs command as configurated user """
+
+        self.debug('run command @{}: \'{}\''
+                   .format(self.options['user'], command))
+        try:
+            output = run_as_user(self.options['user'], command)
+        except Exception as ex:
+            self.debug('command exception: {}:{}'.format(type(ex), ex))
+            raise ex
+        self.debug('command output:')
+        self.debug(output)
+
+        return output
+
     def kill_server(self):
         """ forcibly kills server process """
-        # grab screen name from gameserver name
-        screen = self.run_as_user('screen -ls | grep {}'
-                                  .format(self.options['name'])).strip()
 
-        if screen != '':
-            pid = re.match('\d+', screen).group()
-            self.run_as_user('kill -9 {}'.format(pid))
+        pid = self.pid
+        if pid is not None:
+            os.kill(pid, signal.SIGKILL)
 
-    def _wait(self, seconds):
-        return [x for x in range(seconds)]
+    def _prestop(self, seconds_to_stop):
+        raise NotImplementedError()
 
-    def _progressbar(self, seconds):
-        wait_items = self._wait(seconds)
-        with click.progressbar(wait_items) as waiter:
-            for item in waiter:
-                time.sleep(1)
+    def _stop(self):
+        pid = self.pid
+        if pid is not None:
+            os.kill(pid, signal.SIGINT)
+
+    @click.command()
+    @click.option('-n', '--no_verify',
+                  is_flag=True)
+    @click.option('-c', '--command',
+                  type=str,
+                  help='Start up command.')
+    @click.option('-ds', '--delay_start',
+                  type=int,
+                  help=('Time (in seconds) to wait after service has started '
+                        'to verify'))
+    @click.pass_obj
+    def start(self, no_verify, command, delay_start):
+        """ starts gameserver """
+
+        self.debug_command('start', locals())
+        command = command or self.options['command']
+        delay_start = delay_start or self.options['delay_start']
+
+        if command is None or command == '':
+            raise click.BadParameter('must provide a start command')
+
+        if self.running:
+            raise click.ClickException('{} is already running'
+                                       .format(self.options['name']))
+        else:
+            click.echo('starting {}...'.format(self.options['name']), nl=False)
+            self.run_as_user('cd {} && {}'
+                             .format(self.options['path'], command))
+            if not no_verify:
+                click.echo('')
+                self._progressbar(delay_start)
+
+                if self.running:
+                    click.secho('{} is running'
+                                .format(self.options['name']),
+                                fg='green')
+                else:
+                    raise click.ClickException('could not start {}'
+                                               .format(self.options['name']))
+
+    @click.command()
+    @click.option('-f', '--force',
+                  is_flag=True)
+    @click.option('-mt', '--max_stop',
+                  type=int,
+                  help=('Max time (in seconds) to wait for server to stop'))
+    @click.option('-dp', '--delay_prestop',
+                  type=int,
+                  help=('Time (in seconds) before stopping the server to '
+                        'allow notifing users.'))
+    @click.pass_obj
+    def stop(self, force, max_stop, delay_prestop, is_restart=False):
+        """ stops gameserver """
+
+        self.debug_command('stop', locals())
+        max_stop = max_stop or self.options['max_stop']
+        if not delay_prestop == 0:
+            delay_prestop = delay_prestop or self.options['delay_prestop']
+
+        if self.running:
+            if delay_prestop > 0 and not force:
+                click.echo('notifiying users...'
+                           .format(self.options['name'],
+                                   delay_prestop))
+                self._prestop(delay_prestop, is_restart)
+                self._progressbar(delay_prestop)
+
+            click.echo('stopping {}...'.format(self.options['name']))
+
+            if force:
+                self.kill_server()
+            else:
+                self._stop()
+                with click.progressbar(length=max_stop,
+                                       show_eta=False,
+                                       show_percent=False) as waiter:
+                    for item in waiter:
+                        if not self.running:
+                            break
+                        time.sleep(1)
+
+            if self.running:
+                raise click.ClickException('could not stop {}'
+                                           .format(self.options['name']))
+            else:
+                click.secho('{} was stopped'
+                            .format(self.options['name']),
+                            fg='green')
+        else:
+            raise click.ClickException('{} is not running'
+                                       .format(self.options['name']))
+
+    @click.command()
+    @click.option('-f', '--force',
+                  is_flag=True)
+    @click.option('-n', '--no_verify',
+                  is_flag=True)
+    @click.pass_obj
+    def restart(self, force, no_verify):
+        """ restarts gameserver"""
+
+        self.debug_command('restart', locals())
+        if self.running:
+            self.invoke(self.stop, force=force, is_restart=True)
+        self.invoke(self.start, no_verify=no_verify)
+
+    @click.command()
+    @click.pass_obj
+    def status(self):
+        """ checks if gameserver is runing or not """
+
+        self.debug_command('status')
+        if self.running:
+            click.secho('{} is running'
+                        .format(self.options['name']),
+                        fg='green')
+        else:
+            click.secho('{} is not running'
+                        .format(self.options['name']),
+                        fg='red')

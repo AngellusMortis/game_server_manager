@@ -4,4 +4,10 @@
 #
 #    pip-compile --output-file requirements.txt requirements.in
 #
+click-spinner==0.1.7
 click==6.7
+dnspython3==1.15.0        # via mcstatus
+dnspython==1.15.0         # via dnspython3
+mcstatus==2.2
+pygtail==0.7.0
+six==1.11.0               # via mcstatus

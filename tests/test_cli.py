@@ -4,7 +4,7 @@ from subprocess import CalledProcessError
 import click
 import pytest
 from gs_manager.cli import GSCommand, get_types
-from gs_manager.servers import Custom
+from gs_manager.servers import CustomScreen
 from mock import Mock, mock_open, patch
 
 TEST_CONFIG = '{"test": \n"test"}'
@@ -12,13 +12,13 @@ TEST_CONFIG = '{"test": \n"test"}'
 
 @patch('gs_manager.cli.servers')
 def test_get_types(mock_servers):
-    mock_servers.Custom = object
+    mock_servers.CustomScreen = object
     mock_servers.SomeServer = object
 
     types = get_types()
 
     assert len(types) == 2
-    assert types[0] == 'custom'
+    assert types[0] == 'custom_screen'
     assert types[1] == 'some_server'
 
 
@@ -344,7 +344,7 @@ def test_save_config_file_no_save():
 @patch('gs_manager.cli.run_as_user')
 def test_save_config_no_config(mock_run):
     test_path = '/srv'
-    test_config = {'user': 'root', 'type': 'custom'}
+    test_config = {'user': 'root', 'type': 'custom_screen'}
 
     gs = GSCommand()
     gs.context = click.Context(Mock())
@@ -393,7 +393,7 @@ def test_save_config_no_defaults(mock_run, mock_servers):
 @patch('gs_manager.cli.run_as_user')
 def test_save_config_with_config(mock_run):
     test_path = '/srv'
-    test_config = {'user': 'root', 'type': 'custom', 'test': 'test'}
+    test_config = {'user': 'root', 'type': 'custom_screen', 'test': 'test'}
 
     gs = GSCommand()
     gs.context = click.Context(Mock())
@@ -407,7 +407,7 @@ def test_save_config_with_config(mock_run):
 @patch('gs_manager.cli.run_as_user')
 def test_save_config_failed_to_save(mock_run):
     test_path = '/srv'
-    test_config = {'user': 'root', 'type': 'custom'}
+    test_config = {'user': 'root', 'type': 'custom_screen'}
     mock_run.side_effect = CalledProcessError(1, 'test', None)
 
     gs = GSCommand()
@@ -451,7 +451,7 @@ def test_config_file_type(mock_os):
 def test_config_no_type(mock_servers):
     test_server = Mock()
     test_server.defaults.return_value = {'test': 'test'}
-    mock_servers.Custom = test_server
+    mock_servers.CustomScreen = test_server
 
     gs = GSCommand()
     gs.context = click.Context(Mock())
@@ -466,7 +466,7 @@ def test_config_no_type(mock_servers):
 def test_config_file_overrides_default(mock_servers, mock_os):
     test_server = Mock()
     test_server.defaults.return_value = {'test': 'test'}
-    mock_servers.Custom = test_server
+    mock_servers.CustomScreen = test_server
     mock_os.getcwd.return_value = '/srv'
     mock_os.path.isfile.return_value = True
     mock_os.path.join = os.path.join
@@ -485,7 +485,7 @@ def test_config_file_overrides_default(mock_servers, mock_os):
 def test_config_cli_overrides_file(mock_servers, mock_os):
     test_server = Mock()
     test_server.defaults.return_value = {'test': 'test'}
-    mock_servers.Custom = test_server
+    mock_servers.CustomScreen = test_server
     mock_os.getcwd.return_value = '/srv'
     mock_os.path.isfile.return_value = True
     mock_os.path.join = os.path.join
@@ -502,10 +502,10 @@ def test_config_cli_overrides_file(mock_servers, mock_os):
 def test_server():
 
     gs = GSCommand()
-    gs._config = {'type': 'custom'}
+    gs._config = {'type': 'custom_screen'}
     gs.context = click.Context(Mock())
 
-    assert isinstance(gs.server, Custom)
+    assert isinstance(gs.server, CustomScreen)
 
 
 def test_commands():

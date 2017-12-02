@@ -29,7 +29,6 @@ class GSCommand(click.MultiCommand):
         if self._commands is None:
             possible_commands = inspect.getmembers(self.server)
 
-            print(possible_commands)
             commands = {}
             for command in possible_commands:
                 if isinstance(command[1], click.Command):
@@ -57,7 +56,7 @@ class GSCommand(click.MultiCommand):
             cli_config = self._get_cli_config()
 
             server_type = cli_config.get('type') or \
-                file_config.get('type') or 'custom'
+                file_config.get('type') or 'custom_screen'
 
             config = self._get_default_config(server_type)
             config.update(file_config)
