@@ -1,14 +1,16 @@
 import os
 import re
-from pygtail import Pygtail
 import time
 from socket import timeout
 
-import click_spinner
-
 import click
+import click_spinner
 from gs_manager.servers.java import Java
+from gs_manager.utils import download_file, get_json
 from mcstatus import MinecraftServer
+from pygtail import Pygtail
+
+VERSIONS_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest.json'
 
 
 class Minecraft(Java):
@@ -43,7 +45,8 @@ class Minecraft(Java):
         return parent + [
             'extra_args',
             'java_args',
-            'command',
+            'say_command',
+            'stop_command',
         ]
 
     @property
@@ -89,10 +92,6 @@ class Minecraft(Java):
     @click.option('-h', '--history',
                   type=int,
                   help='Number of lines to show in screen for history')
-    @click.option('-ds', '--delay_start',
-                  type=int,
-                  help=('Time (in seconds) to wait after service has started '
-                        'to verify'))
     @click.option('-sm', '--start_memory',
                   type=int,
                   help=('Starting amount of member (in MB)'))
@@ -108,14 +107,23 @@ class Minecraft(Java):
     @click.option('-jp', '--java_path',
                   type=click.Path(),
                   help='Path to Java executable')
+    @click.option('-ap', '--add_property',
+                  type=str,
+                  multiple=True)
+    @click.option('-rp', '--remove_property',
+                  type=str,
+                  multiple=True)
+    @click.option('--accept_eula',
+                  is_flag=True,
+                  default=False)
     @click.pass_obj
-    def start(self, no_verify, history, delay_start, start_memory,
-              max_memory, thread_count, server_jar, java_path):
+    def start(self, no_verify, history, start_memory,
+              max_memory, thread_count, server_jar, java_path,
+              add_property, remove_property, accept_eula):
         """ starts Minecraft server """
 
         self.debug_command('start', locals())
         history = history or self.options.get('history')
-        delay_start = delay_start or self.options.get('delay_start')
         start_memory = start_memory or self.options.get('start_memory')
         max_memory = max_memory or self.options.get('max_memory')
         thread_count = thread_count or self.options.get('thread_count')
@@ -128,16 +136,53 @@ class Minecraft(Java):
             thread_count,
         )
 
+        if add_property or remove_property:
+            for p in add_property:
+                server_property = p.split('=')
+                self.mc_config[server_property[0]] = server_property[1]
+
+            for server_property in remove_property:
+                del self.mc_config[server_property]
+
+            property_path = os.path.join(
+                self.options['path'], 'server.properties')
+            server_property_string = ''
+            for key, value in self.mc_config.items():
+                server_property_string += '{}={}\n'.format(key, value)
+            self.write_as_user(property_path, server_property_string)
+            self._mc_config = None
+            self.mc_config
+
+        if accept_eula:
+            eula_path = os.path.join(self.options['path'], 'eula.txt')
+            self.write_as_user(eula_path, 'eula=true')
+
         self.invoke(
             super(Minecraft, self).start, no_verify=True,
-            delay_start=delay_start, java_args=java_args,
+            delay_start=0, java_args=java_args,
             server_jar=server_jar, java_path=java_path
         )
 
         if not no_verify:
-            self.debug('wait 2 seconds for logs to start...')
-            time.sleep(2)
             log_file = os.path.join(self.options['path'], 'logs', 'latest.log')
+            self.debug('wait for server to start initalizing...')
+
+            mtime = 0
+            try:
+                mtime = os.stat(log_file).st_mtime
+            except FileNotFoundError:
+                pass
+
+            new_mtime = mtime
+            wait_left = 5
+            while new_mtime == mtime and wait_left > 0:
+                try:
+                    mtime = os.stat(log_file).st_mtime
+                except FileNotFoundError:
+                    pass
+                wait_left -= 0.1
+                time.sleep(0.1)
+
             if os.path.isfile(log_file):
                 offset_file = '.log_offset'
                 if os.path.isfile(offset_file):
@@ -149,14 +194,24 @@ class Minecraft(Java):
                     while processing:
                         for line in tail.readlines():
                             self.debug('log: {}'.format(line))
-                            match = re.search('Done \((\d+\.\d+)s\)! For help,', line)
-                            if match:
+                            done_match = re.search(
+                                'Done \((\d+\.\d+)s\)! For help,',
+                                line
+                            )
+                            if done_match:
                                 click.secho('{} is running'
                                             .format(self.options['name']),
                                             fg='green')
-                                click.echo('server initalization took {} seconds'.format(match.group(1)))
+                                click.echo(
+                                    'server initalization took {} seconds'
+                                    .format(done_match.group(1)))
                                 processing = False
                                 break
+                            elif 'agree to the EULA' in line:
+                                raise click.ClickException(
+                                    'You much agree to Mojang\'s EULA. '
+                                    'Please read https://account.mojang.com/documents/minecraft_eula '
+                                    'and restart server with --accept_eula')
 
                         if loops_since_check < 5:
                             loops_since_check += 1
@@ -291,5 +346,105 @@ class Minecraft(Java):
                     message = match.group('message')
                     if not message == '':
                         click.echo(message)
-            # if os.path.isfile(offset_file):
-            #     os.remove(offset_file)
+            if os.path.isfile(offset_file):
+                os.remove(offset_file)
+
+    @click.command()
+    @click.option('-f', '--force',
+                  is_flag=True)
+    @click.option('-b', '--beta',
+                  is_flag=True)
+    @click.option('-e', '--enable',
+                  is_flag=True)
+    @click.argument('minecraft_version',
+                    type=str, required=False)
+    @click.pass_obj
+    def install(self, force, beta, enable, minecraft_version):
+        """ installs a specific version of Minecraft """
+
+        self.debug_command('install', locals())
+
+        data = get_json(VERSIONS_URL)
+        latest = data['latest']
+        versions = {}
+        for version in data['versions']:
+            versions[version['id']] = version
+
+        if minecraft_version is None:
+            if beta:
+                minecraft_version = latest['snapshot']
+            else:
+                minecraft_version = latest['release']
+        elif minecraft_version not in versions:
+            raise click.BadParameterException(
+                'could not find minecraft version')
+
+        self.debug('minecraft version:')
+        self.debug(versions[minecraft_version])
+
+        jar_dir = os.path.join(self.options['path'], 'jars')
+        jar_file = 'minecraft_server.{}.jar'.format(minecraft_version)
+        jar_path = os.path.join(jar_dir, jar_file)
+        if os.path.isdir(jar_dir):
+            if os.path.isfile(jar_path):
+                if force:
+                    os.remove(jar_path)
+                else:
+                    raise click.ClickException(
+                        'minecraft v{} already installed'
+                        .format(minecraft_version))
+        else:
+            os.makedirs(jar_dir)
+
+        click.echo('downloading v{}...'.format(minecraft_version))
+        version = get_json(versions[minecraft_version]['url'])
+        download_file(
+            version['downloads']['server']['url'],
+            jar_path,
+            sha1=version['downloads']['server']['sha1'])
+
+        click.secho(
+            'minecraft v{} installed'
+            .format(minecraft_version),
+            fg='green'
+        )
+
+        if enable:
+            self.invoke(self.enable, minecraft_version=minecraft_version)
+
+    @click.command()
+    @click.option('-f', '--force',
+                  is_flag=True)
+    @click.argument('minecraft_version',
+                    type=str)
+    @click.pass_obj
+    def enable(self, force, minecraft_version):
+        """ enables a specific version of Minecraft """
+
+        jar_dir = os.path.join(self.options['path'], 'jars')
+        jar_file = 'minecraft_server.{}.jar'.format(minecraft_version)
+        jar_path = os.path.join(jar_dir, jar_file)
+        link_path = os.path.join(self.options['path'], 'minecraft_server.jar')
+
+        if not os.path.isfile(jar_path):
+            raise click.ClickException(
+                'minecraft v{} is not installed'.format(minecraft_version))
+
+        if not (os.path.islink(link_path) or force):
+            raise click.ClickException(
+                'minecraft_server.jar is not a symbolic link, '
+                'use -f to override')
+
+        if os.path.isfile(link_path):
+            if os.path.realpath(link_path) == jar_path:
+                raise click.ClickException(
+                    'minecraft v{} already enabled'.format(minecraft_version))
+            self.run_as_user('rm {}'.format(link_path))
+
+        self.run_as_user('ln -s {} {}'.format(jar_path, link_path))
+
+        click.secho(
+            'minecraft v{} enabled'
+            .format(minecraft_version),
+            fg='green'
+        )

@@ -5,7 +5,8 @@ import signal
 import time
 
 import click
-from gs_manager.utils import run_as_user
+import psutil
+from gs_manager.utils import run_as_user, write_as_user
 
 
 class Base(object):
@@ -17,6 +18,10 @@ class Base(object):
             'type': 'custom_screen',
             'name': 'gameserver',
             'user': 'root',
+            'delay_start': 3,
+            'max_stop': 60,
+            'delay_prestop': 30,
+            'debug': False
         }
 
     @staticmethod
@@ -25,7 +30,9 @@ class Base(object):
             'config',
             'path',
             'save',
-            'debug'
+            'debug',
+            'force',
+            'no_verify',
         ]
 
     logger = None
@@ -41,12 +48,40 @@ class Base(object):
 
     @property
     def pid(self):
-        raise NotImplementedError()
+        return self._read_pid_file()
+
+    def _read_pid_file(self):
+        pid = None
+        pid_file = os.path.join(self.options['path'], '.pid_file')
+        if os.path.isfile(pid_file):
+            with open(pid_file, 'r') as f:
+                try:
+                    pid = int(f.read().strip())
+                except ValueError:
+                    pass
+        self.debug('read pid: {}'.format(pid))
+        return pid
+
+    def _write_pid_file(self, pid):
+        self.debug('write pid: {}'.format(pid))
+        if pid is not None:
+            pid_file = os.path.join(self.options['path'], '.pid_file')
+            with open(pid_file, 'w') as f:
+                f.write(str(pid))
+
+    def _delete_pid_file(self):
+        pid_file = os.path.join(self.options['path'], '.pid_file')
+        if os.path.isfile(pid_file):
+            os.remove(pid_file)
 
     @property
     def running(self):
         """ checks if gameserver is running """
-        return self.pid is not None
+        try:
+            psutil.Process(self.pid)
+        except psutil.NoSuchProcess:
+            return False
+        return True
 
     def _progressbar(self, seconds):
         with click.progressbar(length=seconds) as waiter:
@@ -77,13 +112,13 @@ class Base(object):
             self.debug(args)
         self.debug('')
 
-    def run_as_user(self, command):
+    def run_as_user(self, command, **kwargs):
         """ runs command as configurated user """
 
         self.debug('run command @{}: \'{}\''
                    .format(self.options['user'], command))
         try:
-            output = run_as_user(self.options['user'], command)
+            output = run_as_user(self.options['user'], command, **kwargs)
         except Exception as ex:
             self.debug('command exception: {}:{}'.format(type(ex), ex))
             raise ex
@@ -92,6 +127,12 @@ class Base(object):
 
         return output
 
+    def write_as_user(self, path, file_string):
+        self.debug('write file @{}: \'{}\''
+                   .format(self.options['user'], path))
+
+        write_as_user(self.options['user'], path, file_string)
+
     def kill_server(self):
         """ forcibly kills server process """
 
@@ -99,7 +140,7 @@ class Base(object):
         if pid is not None:
             os.kill(pid, signal.SIGKILL)
 
-    def _prestop(self, seconds_to_stop):
+    def _prestop(self, seconds_to_stop, is_restart):
         raise NotImplementedError()
 
     def _stop(self):
@@ -132,9 +173,19 @@ class Base(object):
             raise click.ClickException('{} is already running'
                                        .format(self.options['name']))
         else:
+            self._delete_pid_file()
+
             click.echo('starting {}...'.format(self.options['name']), nl=False)
-            self.run_as_user('cd {} && {}'
-                             .format(self.options['path'], command))
+            self.run_as_user(command,
+                             cwd=self.options['path'])
+
+            command = command.replace('+', '\\+')
+            pids = self.run_as_user(
+                'ps -ef --sort=start_time | grep -i -P "(?<!grep -i ){}" | awk \'{{print $2}}\''
+                .format(command)
+            ).split('\n')
+            self._write_pid_file(pids[-1])
+
             if not no_verify:
                 click.echo('')
                 self._progressbar(delay_start)

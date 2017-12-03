@@ -1,7 +1,9 @@
+import os
 import re
 from subprocess import CalledProcessError
 
 import click
+import psutil
 from gs_manager.servers.base import Base
 
 
@@ -18,35 +20,26 @@ class CustomScreen(Base):
         defaults = Base.defaults()
         defaults.update({
             'history': 1024,
-            'delay_start': 3,
-            'max_stop': 60,
-            'delay_prestop': 30,
         })
         return defaults
 
-    @staticmethod
-    def excluded_from_save():
-        parent = Base.excluded_from_save()
-        return parent + [
-            'force',
-            'no_verify',
-        ]
-
     @property
     def pid(self):
-        pid = None
+        pid = self._read_pid_file()
         screen = None
 
-        try:
-            screen = self.run_as_user('screen -ls | grep {}'
-                                      .format(self.options['name'])).strip()
-        except CalledProcessError as ex:
-            if not ex.output == '':
-                raise click.ClickException(
-                    'something went wrong checking server status')
+        if pid is None:
+            try:
+                screen = self.run_as_user(
+                    'screen -ls | grep {}'
+                    .format(self.options['name'])).strip()
+            except CalledProcessError as ex:
+                self.debug(ex.output)
 
-        if screen is not None and screen != '':
-            pid = int(re.match('\d+', screen).group())
+            if screen is not None and screen != '':
+                pid = int(re.match('\d+', screen).group())
+
+            self._write_pid_file(pid)
 
         self.debug('pid: {}'.format(pid))
         return pid
@@ -57,23 +50,27 @@ class CustomScreen(Base):
 
         is_running = False
         pid = self.pid
-        if pid is not None:
-            processes = self.run_as_user(
-                'ps -el | grep {} | awk \'{{print $4}}\''.format(pid))
-            processes = processes.split('\n')
-            is_running = len(processes) == 2 and processes[0] == str(pid)
+        try:
+            screen_process = psutil.Process(pid)
+        except psutil.NoSuchProcess:
+            pass
+        else:
+            if len(screen_process.children()) == 1:
+                is_running = True
 
         self.debug('is_running: {}'.format(is_running))
         return is_running
 
-    def _prestop(self, delay_prestop, is_restart):
+    def _prestop(self, seconds_to_stop, is_restart):
         message = 'server is shutting down in {} seconds...'
         if is_restart:
             message = 'server is restarting in {} seconds...'
 
         self.invoke(
             self.say,
-            message=message.format(delay_prestop))
+            message=message.format(seconds_to_stop),
+            do_print=False
+        )
 
     def _stop(self):
         self.invoke(
@@ -104,8 +101,14 @@ class CustomScreen(Base):
         command = command or self.options['command']
         delay_start = delay_start or self.options['delay_start']
 
+        # delete dead screens
+        try:
+            self.run_as_user('screen -wipe')
+        except CalledProcessError:
+            pass
         command = 'screen -h {} -dmS {} {}'.format(
             history, self.options['name'], command)
+
         self.invoke(
             super(CustomScreen, self).start, no_verify=no_verify,
             command=command, delay_start=delay_start)
@@ -171,7 +174,7 @@ class CustomScreen(Base):
                   type=str,
                   help='Command format to send broadcast to sever.')
     @click.pass_obj
-    def say(self, message, say_command):
+    def say(self, message, say_command, do_print=True):
         """ broadcasts a message to gameserver """
 
         self.debug_command('say', locals())
@@ -181,7 +184,10 @@ class CustomScreen(Base):
             raise click.BadParameter('must provide a say command format')
 
         return self.invoke(
-            self.command, command_string=say_command.format(message))
+            self.command,
+            command_string=say_command.format(message),
+            do_print=do_print
+        )
 
     @click.command()
     @click.pass_obj

@@ -7,16 +7,17 @@ import copy
 import inspect
 import json
 import os
+import re
 from subprocess import CalledProcessError
+
+import click
+from gs_manager import servers
+from gs_manager.utils import to_pascal_case, to_snake_case, write_as_user
 
 try:
     from json import JSONDecodeError as JSONError
 except ImportError:
     JSONError = ValueError
-
-import click
-from gs_manager import servers
-from gs_manager.utils import run_as_user, to_pascal_case, to_snake_case
 
 
 class GSCommand(click.MultiCommand):
@@ -64,7 +65,20 @@ class GSCommand(click.MultiCommand):
             self._save_config_file(config_path, config)
             self._config = config
 
+            for key, value in self._config.items():
+                if isinstance(key, str):
+                    self._validate_string(key)
+                if isinstance(value, str):
+                    self._validate_string(value)
+
         return self._config
+
+    def _validate_string(self, string):
+        if len(string) > 0:
+            match = re.match('^[^|]+$', string, re.I)
+            if not match or not match.group() == string:
+                raise click.ClickException(
+                    'string config options may not have a | character')
 
     def _get_server_class(self, server_type=None):
         if server_type is None:
@@ -166,10 +180,7 @@ class GSCommand(click.MultiCommand):
                 config_copy, sort_keys=True, indent=4, separators=(',', ': '))
 
             try:
-                run_as_user(
-                    config['user'],
-                    'echo \'{}\' > \'{}\''
-                    .format(config_json, config_path))
+                write_as_user(config['user'], config_path, config_json)
             except CalledProcessError as ex:
                 raise click.ClickException(
                     'could not save config file (perhaps bad user?)')
