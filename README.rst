@@ -40,21 +40,21 @@ Allows full management of different types of servers with full configuration sup
 Generic configurable gameserver types
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* Custom Screen (custom_screen): Generic gameserver that has an interactive console and can easily be ran via the screen command. Requires additional configuration to work.
-* Custom Steam (custom_steam): Generic gameserver that can be installed and updated from Steam. Also, optionally support Steam workshop. Requires additional configuration to work.
-* Custom RCON (custom_rcon): Generic Steam gameserver with `Source RCON protocol`_ support. Requires additional configuration to work.
-* Java (java): Generic Java base gameserver that can be ran with screen. Requires additional configuration to work.
+* **Custom Screen (custom_screen)**: Generic gameserver that has an interactive console and can easily be ran via the screen command. Requires additional configuration to work.
+* **Custom Steam (custom_steam)**: Generic gameserver that can be installed and updated from Steam. Also, optionally support Steam workshop. Requires additional configuration to work.
+* **Custom RCON (custom_rcon)**: Generic Steam gameserver with `Source RCON protocol`_ support. Requires additional configuration to work.
+* **Java (java)**: Generic Java base gameserver that can be ran with screen. Requires additional configuration to work.
 
 Gameservers for specific games
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* Minecraft (minecraft): Java based gameserver ran with screen for Minecraft.
-* ARK (ark): Steam based gameserver with RCON support for ARK: Surivial Evolved.
+* **Minecraft (minecraft)**: Java based gameserver ran with screen for Minecraft.
+* **ARK (ark)**: Steam based gameserver with RCON support for ARK: Surivial Evolved.
 
 Quickstart
 ----------
 
-Full 1.0 release will be in pip, but until then, it will likely only exist in github::
+Full 1.0 release will be in PyPi, but until then, it will likely only exist in github::
 
         sudo pip install -e -e git+ssh://git@github.com/AngellusMortis/game_server_manager.git@master@egg=game_server_manager
         gs --help
