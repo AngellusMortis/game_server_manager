@@ -1,9 +1,15 @@
-import click
+import os
 
+import click
+from gs_manager.decorators import multi_instance
 from gs_manager.servers.custom_screen import CustomScreen
 
 
 class Java(CustomScreen):
+    """
+    Generic Java base gameserver that can be ran with Screen.
+    Requires additional configuration to work.
+    """
     command_format = ('{} {} -jar {} {}')
 
     @staticmethod
@@ -13,6 +19,7 @@ class Java(CustomScreen):
             'extra_args': '',
             'java_args': '',
             'java_path': 'java',
+            'server_jar': None,
         })
         return defaults
 
@@ -23,16 +30,21 @@ class Java(CustomScreen):
             'command',
         ]
 
+    @multi_instance
     @click.command()
     @click.option('-n', '--no_verify',
                   is_flag=True)
-    @click.option('-h', '--history',
+    @click.option('-hc', '--history',
                   type=int,
                   help='Number of lines to show in screen for history')
     @click.option('-ds', '--delay_start',
                   type=int,
                   help=('Time (in seconds) to wait after service has started '
                         'to verify'))
+    @click.option('-mt', '--max_start',
+                  type=int,
+                  help='Max time (in seconds) to wait before assuming the '
+                       'server is deadlocked')
     @click.option('-ja', '--java_args',
                   type=str,
                   help=('Extra args to pass to Java'))
@@ -45,30 +57,33 @@ class Java(CustomScreen):
     @click.option('-ea', '--extra_args',
                   type=str,
                   help=('To add to jar command'))
+    @click.option('-fg', '--foreground',
+                  is_flag=True,
+                  help='Start gameserver in foreground. Ignores '
+                       'spawn_progress, screen, and any other '
+                       'options or classes that cause server to run '
+                       'in background.')
     @click.pass_obj
-    def start(self, no_verify, history, delay_start,
-              java_args, server_jar, java_path, extra_args):
-        """ starts Minecraft server """
+    def start(self, no_verify, *args, **kwargs):
+        """ starts java gameserver """
 
-        self.debug_command('start', locals())
-        history = history or self.options.get('history')
-        delay_start = delay_start or self.options.get('delay_start')
-        java_args = java_args or self.options.get('java_args')
-        server_jar = server_jar or self.options.get('server_jar')
-        java_path = java_path or self.options.get('java_path')
-        extra_args = extra_args or self.options.get('extra_args')
-
-        if server_jar is None:
-            raise click.BadParameter('must provide a server_jar')
+        if self.config['server_jar'] is None:
+            raise click.BadParameter(
+                'must provide a server_jar',
+                self.context, self._get_param_obj('server_jar'))
+        elif not os.path.isfile(self.config['server_jar']):
+            raise click.BadParameter(
+                'cannot find server_jar: {}'.format(self.config['server_jar']),
+                self.context, self._get_param_obj('server_jar'))
 
         command = self.command_format.format(
-            java_path,
-            java_args,
-            server_jar,
-            extra_args,
+            self.config['java_path'],
+            self.config['java_args'],
+            self.config['server_jar'],
+            self.config['extra_args'],
         )
         self.invoke(
-            super(Java, self).start, no_verify=no_verify,
-            history=history, delay_start=delay_start,
-            command=command
+            super(Java, self).start,
+            command=command,
+            no_verify=no_verify,
         )

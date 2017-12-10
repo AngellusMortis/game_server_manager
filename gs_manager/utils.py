@@ -1,10 +1,13 @@
 import getpass
 import hashlib
+import io
 import os
 import re
 import shlex
+import struct
 import subprocess
 import sys
+import zlib
 
 import requests
 
@@ -57,11 +60,12 @@ def create_pipeline(args, previous_process=None,
 
 
 def run_as_user(user, command, sudo_format='sudo su - {} -c "{}"',
-                redirect_output=True, **kwargs):
+                redirect_output=True, return_process=False, **kwargs):
     current_user = getpass.getuser()
 
     if current_user != user:
         command = command.replace('"', '\\"')
+        command = command.replace('+', '\\+')
         command = sudo_format.format(user, command)
 
     args = shlex.split(command)
@@ -82,20 +86,32 @@ def run_as_user(user, command, sudo_format='sudo su - {} -c "{}"',
             **kwargs
         ))
 
-    stdout, stderr = processes[-1].communicate()
+    if current_user != user and \
+            isinstance(processes[0].stdin, io.BufferedWriter):
+        # try:
+        #     input = raw_input
+        # except NameError:
+        #     pass
+        processes[0].stdin.write(input().encode('utf-8'))
+        print()
 
-    if stdout is None:
-        stdout = ''
+    if return_process:
+        return processes[-1]
+    else:
+        stdout, stderr = processes[-1].communicate()
 
-    if not isinstance(stdout, str):
-        stdout = stdout.decode(sys.getdefaultencoding())
-    stdout = stdout.strip()
+        if stdout is None:
+            stdout = ''
 
-    if processes[-1].returncode == 0:
-        return stdout
+        if not isinstance(stdout, str):
+            stdout = stdout.decode(sys.getdefaultencoding())
+        stdout = stdout.strip()
 
-    raise subprocess.CalledProcessError(
-        processes[-1].returncode, command, stdout)
+        if processes[-1].returncode == 0:
+            return stdout
+
+        raise subprocess.CalledProcessError(
+            processes[-1].returncode, command, stdout)
 
 
 def write_as_user(user, path, file_string):
@@ -153,13 +169,26 @@ def download_file(url, path, md5=None, sha1=None):
     os.rename(tmp_file, path)
 
 
-def validate_int_list(context, param, value):
-    if value is not None:
-        try:
-            values = value.split(',')
-            for index in range(len(values)):
-                values[index] = int(values[index])
-            return values
-        except ValueError:
-            raise click.BadParameter(
-                'value need to be a comma seperated list of int')
+def str_to_l(st):
+    return struct.unpack('q', st)[0]
+
+
+def z_unpack(src, dst):
+    with open(src, 'rb') as f_src:
+        with open(dst, 'wb') as f_dst:
+            f_src.read(8)
+            size1 = str_to_l(f_src.read(8))
+            f_src.read(8)
+            size2 = str_to_l(f_src.read(8))
+            if(size1 == -1641380927):
+                size1 = 131072
+            runs = (size2 + size1 - 1) / size1
+            array = []
+            for i in range(int(runs)):
+                array.append(f_src.read(8))
+                f_src.read(8)
+            for i in range(int(runs)):
+                to_read = array[i]
+                compressed = f_src.read(str_to_l(to_read))
+                decompressed = zlib.decompress(compressed)
+                f_dst.write(decompressed)

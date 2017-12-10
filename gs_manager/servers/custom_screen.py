@@ -1,17 +1,16 @@
-import os
 import re
 from subprocess import CalledProcessError
 
 import click
 import psutil
+from gs_manager.decorators import multi_instance, single_instance
 from gs_manager.servers.base import Base
 
 
 class CustomScreen(Base):
     """
-    custom_screen is for game servers that have some type of interactive
-    terminal and will get ran on its own screen so the terminal can be
-    accessed at any time
+    Generic gameserver that has an interactive console and can easily be
+    ran via the screen command. Requires additional configuration to work.
     """
     logger = None
 
@@ -20,183 +19,188 @@ class CustomScreen(Base):
         defaults = Base.defaults()
         defaults.update({
             'history': 1024,
+            'say_command': None,
+            'stop_command': None,
+            'save_command': None,
         })
         return defaults
 
-    @property
-    def pid(self):
-        pid = self._read_pid_file()
-        screen = None
+    @staticmethod
+    def excluded_from_save():
+        parent = Base.excluded_from_save()
+        return parent + [
+            'command_string',
+            'do_print',
+            'message',
+        ]
+
+    def _clear_screens(self):
+        try:
+            self.run_as_user('screen --wipe')
+        except CalledProcessError:
+            pass
+
+    def get_pid(self, instance_name=None):
+        pid = self._read_pid_file(instance_name)
 
         if pid is None:
+            screen = None
             try:
                 screen = self.run_as_user(
                     'screen -ls | grep {}'
-                    .format(self.options['name'])).strip()
+                    .format(self.config['name'])).strip()
             except CalledProcessError as ex:
-                self.debug(ex.output)
+                self.logger.debug(ex.output)
 
             if screen is not None and screen != '':
                 pid = int(re.match('\d+', screen).group())
 
-            self._write_pid_file(pid)
-
-        self.debug('pid: {}'.format(pid))
+            self._write_pid_file(pid, instance_name)
         return pid
 
-    @property
-    def running(self):
-        """ checks if gameserver is running """
-
+    def is_running(self, instance_name=None):
         is_running = False
-        pid = self.pid
+        pid = self.get_pid(instance_name)
+
         try:
             screen_process = psutil.Process(pid)
         except psutil.NoSuchProcess:
-            pass
+            self._delete_pid_file(instance_name)
         else:
-            if len(screen_process.children()) == 1:
+            child_count = len(screen_process.children())
+            if child_count == 1:
                 is_running = True
+            elif child_count == 0:
+                self._clear_screens()
+            else:
+                raise click.ClickException(
+                    'Unexpected number of child proceses for screen')
 
-        self.debug('is_running: {}'.format(is_running))
+        self.logger.debug('is_running: {}'.format(is_running))
         return is_running
 
-    def _prestop(self, seconds_to_stop, is_restart):
-        message = 'server is shutting down in {} seconds...'
-        if is_restart:
-            message = 'server is restarting in {} seconds...'
-
-        self.invoke(
-            self.say,
-            message=message.format(seconds_to_stop),
-            do_print=False
-        )
-
-    def _stop(self):
-        self.invoke(
-            self.command,
-            command_string=self.options['stop_command'],
-            do_print=False
-        )
-
+    @multi_instance
     @click.command()
     @click.option('-n', '--no_verify',
-                  is_flag=True)
+                  is_flag=True,
+                  help='Do not wait until gameserver is running before '
+                       'exiting')
     @click.option('-hc', '--history',
                   type=int,
                   help='Number of lines to show in screen for history')
-    @click.option('-c', '--command',
-                  type=str,
-                  help='Start up command.')
     @click.option('-ds', '--delay_start',
                   type=int,
-                  help=('Time (in seconds) to wait after service has started '
-                        'to verify'))
-    @click.pass_obj
-    def start(self, no_verify, history, command, delay_start):
-        """ starts gameserver """
-
-        self.debug_command('start', locals())
-        history = history or self.options['history']
-        command = command or self.options['command']
-        delay_start = delay_start or self.options['delay_start']
-
-        # delete dead screens
-        try:
-            self.run_as_user('screen -wipe')
-        except CalledProcessError:
-            pass
-        command = 'screen -h {} -dmS {} {}'.format(
-            history, self.options['name'], command)
-
-        self.invoke(
-            super(CustomScreen, self).start, no_verify=no_verify,
-            command=command, delay_start=delay_start)
-
-    @click.command()
-    @click.option('-f', '--force',
-                  is_flag=True)
-    @click.option('-mt', '--max_stop',
+                  help='Time (in seconds) to wait after service has started '
+                       'to verify it is running')
+    @click.option('-mt', '--max_start',
                   type=int,
-                  help=('Max time (in seconds) to wait for server to stop'))
-    @click.option('-dp', '--delay_prestop',
-                  type=int,
-                  help=('Time (in seconds) before stopping the server to '
-                        'allow notifing users.'))
-    @click.option('-sc', '--stop_command',
+                  help='Max time (in seconds) to wait before assuming the '
+                       'server is deadlocked')
+    @click.option('-fg', '--foreground',
+                  is_flag=True,
+                  help='Start gameserver in foreground. Ignores '
+                       'spawn_progress, screen, and any other '
+                       'options or classes that cause server to run '
+                       'in background.')
+    @click.option('-c', '--command',
                   type=str,
-                  help='Command to stop server.')
+                  help='Start up command')
     @click.pass_obj
-    def stop(self, force, max_stop, delay_prestop,
-             stop_command, is_restart=False):
-        """ stops gameserver """
+    def start(self, no_verify, *args, **kwargs):
+        """ starts gameserver with screen """
 
-        self.debug_command('stop', locals())
-        max_stop = max_stop or self.options['max_stop']
-        if not delay_prestop == 0:
-            delay_prestop = delay_prestop or self.options['delay_prestop']
-        stop_command = stop_command or self.options['stop_command']
+        command = self.config['command']
 
-        if stop_command is None or stop_command == '':
-            raise click.BadParameter('must provide a stop command')
+        if not self.config['foreground']:
+            command = 'screen -h {} -dmS {} {}'.format(
+                self.config['history'],
+                self.config['name'],
+                self.config['command'],
+            )
 
-        self.options['stop_command'] = stop_command
-
+        self._clear_screens()
         self.invoke(
-            super(CustomScreen, self).stop,
-            force=force, is_restart=is_restart,
-            max_stop=max_stop, delay_prestop=delay_prestop
+            super(CustomScreen, self).start,
+            command=command,
+            no_verify=no_verify,
         )
 
+    @multi_instance
     @click.command()
     @click.argument('command_string')
     @click.pass_obj
-    def command(self, command_string, do_print=True):
-        """ runs console command """
+    def command(self, command_string, do_print=True, *args, **kwargs):
+        """ runs console command against screen session """
 
-        self.debug_command('command', locals())
+        if self.is_running(self.config['current_instance']):
+            if do_print:
+                self.logger.info(
+                    'command @{}: {}'
+                    .format(self.config['name'], command_string)
+                )
 
-        if self.running:
             command_string = "screen -p 0 -S {} -X eval 'stuff \"{}\"\015'" \
-                .format(self.options['name'], command_string)
+                .format(self.config['name'], command_string)
             output = self.run_as_user(command_string)
 
             if do_print:
-                click.echo(output)
+                self.logger.info(output)
             return output
         else:
-            raise click.ClickException('{} is not running'
-                                       .format(self.options['name']))
+            self.logger.warning('{} is not running'.format(self.config['name']))
 
+    @multi_instance
+    @click.command()
+    @click.option('-vc', '--save_command',
+                  type=str,
+                  help='Command to save the server')
+    @click.pass_obj
+    def save(self, do_print=True, *args, **kwargs):
+        """ saves gameserver """
+
+        instance = self.config['current_instance']
+        i_config = self.config.get_instance_config(instance)
+
+        if i_config['save_command'] is None:
+            raise click.BadParameter(
+                'must provide a save command',
+                self.context, self._get_param_obj('save_command'))
+
+        return self.invoke(
+            self.command,
+            command_string=i_config['save_command'],
+            do_print=do_print
+        )
+
+    @multi_instance
     @click.command()
     @click.argument('message')
     @click.option('-yc', '--say_command',
                   type=str,
-                  help='Command format to send broadcast to sever.')
+                  help='Command format to send broadcast to sever')
     @click.pass_obj
-    def say(self, message, say_command, do_print=True):
+    def say(self, message, do_print=True, *args, **kwargs):
         """ broadcasts a message to gameserver """
 
-        self.debug_command('say', locals())
-        say_command = say_command or self.options.get('say_command')
-
-        if say_command is None:
-            raise click.BadParameter('must provide a say command format')
+        if self.config['say_command'] is None:
+            raise click.BadParameter(
+                'must provide a say command format',
+                self.context, self._get_param_obj('say_command'))
 
         return self.invoke(
             self.command,
-            command_string=say_command.format(message),
+            command_string=self.config['say_command'].format(message),
             do_print=do_print
         )
 
+    @single_instance
     @click.command()
     @click.pass_obj
-    def attach(self):
-        """ attachs to gameserver screen """
+    def shell(self, *args, **kwargs):
+        """ attachs to gameserver screen to give shell access """
 
-        self.debug_command('attach')
-        if self.running:
-            self.run_as_user('screen -x {}'.format(self.options['name']))
+        if self.is_running(self.config['current_instance']):
+            self.run_as_user('screen -x {}'.format(self.config['name']))
         else:
             raise click.ClickException('{} is not running'
-                                       .format(self.options['name']))
+                                       .format(self.config['name']))
