@@ -61,6 +61,20 @@ Full 1.0 release will be in PyPi, but until then, it will likely only exist in g
 
 `gs` will attempt to use `.gs_config.json` as the main configuration file. If this does not exist, you must provide all configuration options via command line. `-t` will speciify type of gameserver and `-s` will save a `.gs_config.json` file based on your commandline parameters.
 
+Generic
+~~~~~~~
+
+1. Generate default config (assuming generic type of `custom_screen`)::
+
+        gs -t custom_screen -s status
+
+2. Edit `.gs_config.json` with anything that is relevant to your server
+3. Start server::
+
+        gs start
+
+4. *Optional*: Once you get everything working, make an issue and/or pull request to make a new server type so you do not have to configure in the future!
+
 Minecraft
 ~~~~~~~~~
 
@@ -128,6 +142,17 @@ See `gs -t ark install --help` for more details.
 
 
 .. _Source RCON protocol: https://developer.valvesoftware.com/wiki/Source_RCON_Protocol
+
+Planned
+-------
+
+Stuff planned before the 1.0 release:
+
+* Full Unit Test and code coverage (Python 2.7, 3.4+ support)
+* Documentation
+* Backup command for all servers
+* Staging support to update servers while still running
+* Probably more stuff and maybe more server types
 
 Credits
 ---------
