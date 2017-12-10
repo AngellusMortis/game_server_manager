@@ -29,7 +29,7 @@ Requirements
 ------------
 
 * POSIX Complient System - built and tested on Arch Linux, but should work on any Linux, MAC OSX or Windows Subsystem for Linux version
-        * Uses and requires `sudo`, `rm`, `mkdir`, `ps`, `ln`, `ls`, `chown`, `vim`, and optionally `screen` (for screen based servers) and `steamcmd` (for Steam based servers)
+        * Uses and requires `sudo`, `rm`, `mkdir`, `ps`, `ln`, `ls`, `chown`, `vim`, and optionally `screen` (for screen based servers), `java` (for Java based servers) and `steamcmd` (for Steam based servers)
 * Python - built and tested with 3.6, but for full 1.0 release, unit tests will suppport 2.7 and 3.4+
 
 Features
@@ -64,6 +64,23 @@ Full 1.0 release will be in PyPi, but until then, it will likely only exist in g
 Minecraft
 ~~~~~~~~~
 
+Java
+****
+
+You much have Java installed to run Minecraft. If you need help installing Java, consult the documentation on the Minecraft wiki:
+
+* https://minecraft.gamepedia.com/Tutorials/Setting_up_a_server#Installing_Java_2
+
+Firewall
+********
+
+Open any firewall ports you need as detailed on Minecraft wiki:
+
+* https://minecraft.gamepedia.com/Tutorials/Setting_up_a_server#Firewalling.2C_NATs_and_external_IP_addresses
+
+Install/Start
+*************
+
 Assuming you want the latest stable version of Minecraft and the server to run as user `minecraft` with all of the default settings::
 
         gs -t minecraft -u minecraft -s install
@@ -75,6 +92,30 @@ See `gs -t minecraft install --help` for more details.
 
 ARK
 ~~~
+
+SteamCMD
+********
+
+Install SteamCMD according to the docs for your OS:
+
+* Valve Docs: https://developer.valvesoftware.com/wiki/SteamCMD
+* Arch Linux: https://wiki.archlinux.org/index.php/Steam#SteamCMD
+
+Open File Limit
+***************
+
+Increase Open Files Limit as detailed on ARK wiki:
+
+* https://ark.gamepedia.com/Dedicated_Server_Setup#Open_Files_Limit
+
+Firewall
+********
+
+Open any firewall ports you need as detailed on ARK wiki:
+* https://ark.gamepedia.com/Dedicated_Server_Setup#Port_Forwarding_and_Firewall
+
+Install/Start
+*************
 
 Assuming you want the server to run as user `ark` with all of the default settings and no mods::
 
