@@ -112,6 +112,7 @@ Firewall
 ********
 
 Open any firewall ports you need as detailed on ARK wiki:
+
 * https://ark.gamepedia.com/Dedicated_Server_Setup#Port_Forwarding_and_Firewall
 
 Install/Start
