@@ -1,17 +1,18 @@
+import contextlib
 import getpass
 import hashlib
 import io
 import os
 import re
 import shlex
-import struct
 import subprocess
 import sys
-import zlib
 
 import requests
 
 import click
+
+SUDO_FORMAT = 'sudo su - {} -c "{}"'
 
 
 def to_pascal_case(name):
@@ -22,7 +23,7 @@ def to_snake_case(name):
     return re.sub('([a-z])([A-Z])', r'\1_\2', name).lower()
 
 
-def create_pipeline(args, previous_process=None,
+def _create_pipeline(args, previous_process=None,
                     redirect_output=True, **kwargs):
     processes = []
     split_index = args.index('|')
@@ -41,7 +42,7 @@ def create_pipeline(args, previous_process=None,
     ))
 
     if '|' in args2:
-        processes += create_pipeline(
+        processes += _create_pipeline(
             args2, previous_process=processes[-1],
             redirect_output=redirect_output, **kwargs)
     else:
@@ -59,20 +60,22 @@ def create_pipeline(args, previous_process=None,
     return processes
 
 
-def run_as_user(user, command, sudo_format='sudo su - {} -c "{}"',
-                redirect_output=True, return_process=False, **kwargs):
+def run_as_user(user, command,
+                redirect_output=True,
+                return_process=False,
+                **kwargs):
     current_user = getpass.getuser()
 
     if current_user != user:
         command = command.replace('"', '\\"')
         command = command.replace('+', '\\+')
-        command = sudo_format.format(user, command)
+        command = SUDO_FORMAT.format(user, command)
 
     args = shlex.split(command)
 
     processes = []
     if '|' in args:
-        processes = create_pipeline(
+        processes = _create_pipeline(
             args, redirect_output=redirect_output, **kwargs)
         for x in range(len(processes)-1):
             processes[x].stdout.close()
@@ -85,15 +88,6 @@ def run_as_user(user, command, sudo_format='sudo su - {} -c "{}"',
             args,
             **kwargs
         ))
-
-    if current_user != user and \
-            isinstance(processes[0].stdin, io.BufferedWriter):
-        # try:
-        #     input = raw_input
-        # except NameError:
-        #     pass
-        processes[0].stdin.write(input().encode('utf-8'))
-        print()
 
     if return_process:
         return processes[-1]
@@ -169,26 +163,9 @@ def download_file(url, path, md5=None, sha1=None):
     os.rename(tmp_file, path)
 
 
-def str_to_l(st):
-    return struct.unpack('q', st)[0]
-
-
-def z_unpack(src, dst):
-    with open(src, 'rb') as f_src:
-        with open(dst, 'wb') as f_dst:
-            f_src.read(8)
-            size1 = str_to_l(f_src.read(8))
-            f_src.read(8)
-            size2 = str_to_l(f_src.read(8))
-            if(size1 == -1641380927):
-                size1 = 131072
-            runs = (size2 + size1 - 1) / size1
-            array = []
-            for i in range(int(runs)):
-                array.append(f_src.read(8))
-                f_src.read(8)
-            for i in range(int(runs)):
-                to_read = array[i]
-                compressed = f_src.read(str_to_l(to_read))
-                decompressed = zlib.decompress(compressed)
-                f_dst.write(decompressed)
+@contextlib.contextmanager
+def surpress_stdout():
+    save_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    yield
+    sys.stdout = save_stdout

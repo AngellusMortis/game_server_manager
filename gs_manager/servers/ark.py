@@ -1,12 +1,12 @@
 import os
 import shutil
 import struct
+import zlib
 
 import click
 from gs_manager.decorators import multi_instance, single_instance
 from gs_manager.servers.base import STATUS_FAILED, STATUS_SUCCESS
 from gs_manager.servers.custom_rcon import CustomRcon
-from gs_manager.utils import z_unpack
 from gs_manager.validators import validate_int_list, validate_key_value
 
 STEAM_DOWNLOAD_URL = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz'
@@ -99,7 +99,37 @@ class Ark(CustomRcon):
         self.logger.debug('command args: {}'.format(command_args))
         return command_args
 
+    def _z_unpack(self, from_path, to_path):
+        """
+        unpacks .z files downloaded from Steam workshop
+
+        adapted from https://github.com/TheCherry/ark-server-manager/blob/master/src/z_unpack.py
+        """
+        with open(from_path, 'rb') as f_from:
+            with open(to_path, 'wb') as f_to:
+                f_from.read(8)
+                size1 = struct.unpack('q', f_from.read(8))[0]
+                f_from.read(8)
+                size2 = struct.unpack('q', f_from.read(8))[0]
+                if size1 == -1641380927:
+                    size1 = 131072
+                runs = (size2 + size1 - 1) / size1
+                array = []
+                for i in range(int(runs)):
+                    array.append(f_from.read(8))
+                    f_from.read(8)
+                for i in range(int(runs)):
+                    to_read = array[i]
+                    compressed = f_from.read(struct.unpack('q', to_read)[0])
+                    decompressed = zlib.decompress(compressed)
+                    f_to.write(decompressed)
+
     def _read_ue4_string(self, file_obj):
+        """
+        reads a UE4 string from a file object
+
+        adapted from https://github.com/barrycarey/Ark_Mod_Downloader/blob/master/Ark_Mod_Downloader.py
+        """
         count = struct.unpack('i', file_obj.read(4))[0]
         flag = False
         if count < 0:
@@ -112,6 +142,11 @@ class Ark(CustomRcon):
         return file_obj.read(count)[:-1].decode()
 
     def _write_ue4_string(self, string_to_write, file_obj):
+        """
+        writes a UE4 string to a file object
+
+        adapted from https://github.com/barrycarey/Ark_Mod_Downloader/blob/master/Ark_Mod_Downloader.py
+        """
         string_length = len(string_to_write) + 1
         file_obj.write(struct.pack('i', string_length))
         barray = bytearray(string_to_write, "utf-8")
@@ -119,6 +154,11 @@ class Ark(CustomRcon):
         file_obj.write(struct.pack('p', b'0'))
 
     def _parse_base_info(self, mod_info_file):
+        """
+        parses an ARK mod.info file
+
+        adapted from https://github.com/barrycarey/Ark_Mod_Downloader/blob/master/Ark_Mod_Downloader.py
+        """
         map_names = []
         with open(mod_info_file, 'rb') as f:
             self._read_ue4_string(f)
@@ -131,6 +171,11 @@ class Ark(CustomRcon):
         return map_names
 
     def _parse_meta_data(self, mod_meta_file):
+        """
+        parses an ARK modmeta.info file
+
+        adapted from https://github.com/barrycarey/Ark_Mod_Downloader/blob/master/Ark_Mod_Downloader.py
+        """
         meta_data = {}
         with open(mod_meta_file, 'rb') as f:
             total_pairs = struct.unpack('i', f.read(4))[0]
@@ -400,7 +445,7 @@ class Ark(CustomRcon):
                                 self.logger.debug(to_extract_path)
                                 self.logger.debug(
                                     'extracting {}...'.format(filename))
-                                z_unpack(file_path, to_extract_path)
+                                self._z_unpack(file_path, to_extract_path)
                                 u_size = os.stat(to_extract_path).st_size
                                 self.logger.debug(
                                     '{}: {} {}'.format(filename, u_size, size))

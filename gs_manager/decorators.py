@@ -1,5 +1,11 @@
-import click
+import copy
+import time
 from functools import update_wrapper
+from multiprocessing import Process
+
+import click
+from gs_manager.utils import surpress_stdout
+from gs_manager.config import Config
 
 
 def _instance_wrapper(original_command, all_callback):
@@ -62,18 +68,66 @@ def multi_instance(command):
             raise click.ClickException(
                 'cannot use @all with -fg option')
         elif len(config['instance_overrides'].keys()) > 0:
-            results = []
-            for instance_name in config.get_instances():
-                logger.debug(
-                    'running status for instance: {}'
-                    .format(instance_name))
+            if config['parallel']:
+                processes = []
 
-                kwargs['current_instance'] = instance_name
-                kwargs['multi'] = True
-                config.add_cli_config(kwargs)
-                result = original_command(*args, **kwargs)
-                results.append(result)
-            return results
+                logger.info(
+                    'running {} for {} @all completed...'
+                    .format(command.name, config['name'])
+                )
+
+                for instance_name in config.get_instances():
+                    logger.debug(
+                        'spawning {} for instance: {}'
+                        .format(command.name, instance_name)
+                    )
+                    # copy_args = copy.deepcopy(args)
+                    copy_kwargs = copy.deepcopy(kwargs)
+                    copy_config = Config(context)
+
+                    copy_kwargs['current_instance'] = instance_name
+                    copy_kwargs['multi'] = True
+                    copy_config.add_cli_config(copy_kwargs)
+
+                    context.obj.config = copy_config
+
+                    p = Process(
+                        target=surpress(original_command),
+                        kwargs=dict(context.params),
+                    )
+                    p.start()
+                    processes.append(p)
+
+                bar = click.progressbar(length=len(processes))
+                completed = None
+                previous_completed = None
+                not_done = True
+                while not_done:
+                    alive_list = [p.is_alive() for p in processes]
+                    logger.debug('processes alive: {}'.format(alive_list))
+                    not_done = any(alive_list)
+                    completed = sum([int(not c) for c in alive_list])
+                    if not completed == previous_completed:
+                        bar.update(completed)
+                        previous_completed = completed
+                    time.sleep(1)
+                logger.success(
+                    '\n{} {} @all completed'
+                    .format(command.name, config['name'])
+                )
+            else:
+                results = []
+                for instance_name in config.get_instances():
+                    logger.debug(
+                        'running {} for instance: {}'
+                        .format(command.name, instance_name))
+
+                    kwargs['current_instance'] = instance_name
+                    kwargs['multi'] = True
+                    config.add_cli_config(kwargs)
+                    result = original_command(*args, **kwargs)
+                    results.append(result)
+                return results
         else:
             logger.debug(
                 'no valid instances found, removing current_instance...')
@@ -82,3 +136,13 @@ def multi_instance(command):
     wrapper_function = _instance_wrapper(original_command, all_callback)
     command.callback = update_wrapper(wrapper_function, original_command)
     return command
+
+
+def surpress(function):
+    def new_func(*args, **kwargs):
+        with surpress_stdout():
+            result = function(*args, **kwargs)
+        return result
+
+    return new_func
+    # return update_wrapper(new_func, function)

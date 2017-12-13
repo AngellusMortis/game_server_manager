@@ -2,8 +2,11 @@ import getpass
 import subprocess
 
 import pytest
-from gs_manager.utils import run_as_user, to_pascal_case, to_snake_case
+from gs_manager.utils import run_as_user, to_pascal_case, to_snake_case, SUDO_FORMAT
 from mock import Mock, patch
+from io import StringIO
+
+MOCK_SUDO = 'echo {} "{}"'
 
 
 def test_to_snake_case():
@@ -73,7 +76,7 @@ def test_run_as_user_different_user(mock_subprocess):
 
     user = 'root'
     command = 'ls'
-    expected = 'sudo su - {} -c {}'.format(user, command)
+    expected = SUDO_FORMAT.format(user, command)
 
     run_as_user(user, command)
 
@@ -82,6 +85,7 @@ def test_run_as_user_different_user(mock_subprocess):
 
 
 @patch('gs_manager.utils.subprocess')
+@patch('gs_manager.utils.SUDO_FORMAT', MOCK_SUDO)
 def test_run_as_user_diffent_sudo(mock_subprocess):
     mock_popen = Mock()
     mock_popen.communicate.return_value = (None, None)
@@ -90,15 +94,15 @@ def test_run_as_user_diffent_sudo(mock_subprocess):
 
     user = 'root'
     command = 'ls'
-    sudo_format = 'echo {} "{}"'
-    expected = sudo_format.format(user, command)
+    expected = MOCK_SUDO.format(user, command)
 
-    run_as_user(user, command, sudo_format=sudo_format)
+    run_as_user(user, command)
 
     assert mock_subprocess.Popen.called_with(
         expected, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
 
+@patch('gs_manager.utils.SUDO_FORMAT', MOCK_SUDO)
 def test_run_as_user_output():
     tests = [
         'test',
@@ -110,10 +114,9 @@ def test_run_as_user_output():
         'last $est',
     ]
     user = 'root'
-    sudo_format = 'echo {} "{}"'
 
     for test in tests:
-        output = run_as_user(user, test, sudo_format=sudo_format)
+        output = run_as_user(user, test)
         assert output == '{} {}'.format(user, test)
 
 
@@ -122,3 +125,50 @@ def test_run_as_user_bad_return():
 
     with pytest.raises(subprocess.CalledProcessError):
         run_as_user(user, 'test')
+
+
+def test_run_as_user_return_process():
+    user = getpass.getuser()
+
+    process = run_as_user(user, 'test', return_process=True)
+
+    assert process.returncode != 0
+
+
+@patch('gs_manager.utils.subprocess')
+def test_run_as_user_no_redirect(mock_subprocess):
+    mock_popen = Mock()
+    mock_popen.communicate.return_value = (None, None)
+    mock_popen.returncode = 0
+    mock_subprocess.Popen.return_value = mock_popen
+
+    user = getpass.getuser()
+
+    run_as_user(user, 'ls -la', redirect_output=False)
+
+    assert mock_subprocess.Popen('ls -la')
+
+
+def test_run_as_user_pipeline_2():
+    expected = 'test'
+    user = getpass.getuser()
+
+    output = run_as_user(user, 'echo {} | cat'.format(expected))
+
+    assert output == expected
+
+
+def test_run_as_user_pipeline_3():
+    user = getpass.getuser()
+
+    output = run_as_user(user, 'echo test | cat | xargs echo 2')
+
+    assert output == '2 test'
+
+
+def test_run_as_user_pipeline_5():
+    user = getpass.getuser()
+
+    output = run_as_user(user, 'echo test | cat | xargs echo 2 | cat | xargs echo 3')
+
+    assert output == '3 2 test'

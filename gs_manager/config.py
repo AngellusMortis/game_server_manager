@@ -35,6 +35,7 @@ class Config(object):
 
     def __init__(self, context):
         self._context = context
+
         self._filename = self._context.params.get('config') or \
             self._context.lookup_default('config') or \
             self._filename
@@ -42,7 +43,8 @@ class Config(object):
 
         # get initial configs
         self._file_config = self._get_file_config()
-        self._global_cli_config = self._get_cli_config(self._context.params)
+        self._global_cli_config = \
+            self._get_cli_config(self._context.params)
 
         # get server default configs
         self._default_config = self._get_default_config()
@@ -233,6 +235,7 @@ class Config(object):
         logger = logging.getLogger('gs_manager')
 
         if not logger.hasHandlers():
+            logger.setLevel(logging.DEBUG)
             log_dir = os.path.join(self['path'], 'logs')
             if not os.path.isdir(log_dir):
                 run_as_user(self['user'], 'mkdir {}'.format(log_dir))

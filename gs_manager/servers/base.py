@@ -42,6 +42,7 @@ class Base(object):
             'multi': False,
             'foreground': False,
             'spawn_process': False,
+            'parallel': False,
         }
 
     @staticmethod
@@ -56,6 +57,7 @@ class Base(object):
             'no_verify',
             'current_instance',
             'foreground',
+            'parallel',
         ]
 
     @staticmethod
@@ -92,6 +94,13 @@ class Base(object):
                         'Current instance to run commands against. If all, '
                         'will loop through all instances and run the command '
                         'for each',
+                },
+                {
+                    'param_decls': ('-p', '--parallel'),
+                    'is_flag': True,
+                    'help':
+                        'Used in conjuntion with -ci @all to run all '
+                        'subcommands in parallel',
                 }
             ]
         }
