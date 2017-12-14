@@ -8,53 +8,43 @@ from gs_manager.utils import surpress_stdout
 from gs_manager.config import Config
 
 
-def _instance_wrapper(original_command, all_callback):
+def _instance_wrapper(command, all_callback):
     def _wrapper(*args, **kwargs):
         context = click.get_current_context()
-        config = context.obj.config
-        logger = context.obj.logger
-        context.obj.context = context
+        server = context.obj
+        config = server.config
+        logger = server.logger
+        instance = config['current_instance']
+        all_instances = config.get_instances()
+
+        server.context = context
 
         config.add_cli_config(kwargs)
 
         logger.debug(
             'command start: {}'.format(context.command.name))
 
-        if config['current_instance'] is not None and \
-                not context.obj.supports_multi_instance:
-            raise click.ClickException(
+        if instance is not None and not server.supports_multi_instance:
+            raise click.BadParameter(
                 '{} does not support multiple instances'
-                .format(config['name']))
-        elif config['current_instance'] is None and \
-                len(config['instance_overrides'].keys()) and \
-                context.obj.supports_multi_instance:
-            logger.debug('no instance specific, but one found, adding...')
-            config['current_instance'] = \
-                list(config['instance_overrides'].keys())[0]
+                .format(config['name']), context)
+        elif instance is None and len(all_instances) > 0 and \
+                server.supports_multi_instance:
 
-        if config['current_instance'] == '@all':
+            logger.debug('no instance specific, but one found, adding...')
+            config['current_instance'] = all_instances[0]
+
+        if instance == '@all':
             return all_callback(context, *args, **kwargs)
-        elif config['current_instance'] is not None:
+        elif instance is not None:
             logger.debug('adding instance name to name...')
             config['name'] = '{}_{}'.format(
                 config['name'], config['current_instance'])
 
-        result = original_command(*args, **kwargs)
+        result = command(*args, **kwargs)
         return result
 
     return _wrapper
-
-
-def single_instance(command):
-    original_command = command.callback
-
-    def all_callback(context, *args, **kwargs):
-        raise click.ClickException(
-            '{} does not support @all'.format(command.name))
-
-    wrapper_function = _instance_wrapper(original_command, all_callback)
-    command.callback = update_wrapper(wrapper_function, original_command)
-    return command
 
 
 def _run_sync(context, command, **kwargs):
@@ -125,6 +115,18 @@ def _run_parallel(context, command, **kwargs):
         .format(command.name, config['name'])
     )
     return [p.exitcode for p in processes]
+
+
+def single_instance(command):
+    original_command = command.callback
+
+    def all_callback(context, *args, **kwargs):
+        raise click.ClickException(
+            '{} does not support @all'.format(command.name))
+
+    wrapper_function = _instance_wrapper(original_command, all_callback)
+    command.callback = update_wrapper(wrapper_function, original_command)
+    return command
 
 
 def multi_instance(command):
