@@ -12,34 +12,32 @@ def _instance_wrapper(command, all_callback):
     def _wrapper(*args, **kwargs):
         context = click.get_current_context()
         server = context.obj
-        config = server.config
-        logger = server.logger
-        instance = config['current_instance']
-        all_instances = config.get_instances()
+        instance = server.config['current_instance']
+        all_instances = server.config.get_instances()
 
         server.context = context
+        server.config.add_cli_config(kwargs)
 
-        config.add_cli_config(kwargs)
-
-        logger.debug(
+        server.logger.debug(
             'command start: {}'.format(context.command.name))
 
         if instance is not None and not server.supports_multi_instance:
             raise click.BadParameter(
                 '{} does not support multiple instances'
-                .format(config['name']), context)
+                .format(server.config['name']), context)
         elif instance is None and len(all_instances) > 0 and \
                 server.supports_multi_instance:
 
-            logger.debug('no instance specific, but one found, adding...')
-            config['current_instance'] = all_instances[0]
+            server.logger.debug(
+                'no instance specific, but one found, adding...')
+            server.config['current_instance'] = all_instances[0]
 
         if instance == '@all':
             return all_callback(context, *args, **kwargs)
         elif instance is not None:
-            logger.debug('adding instance name to name...')
-            config['name'] = '{}_{}'.format(
-                config['name'], config['current_instance'])
+            server.logger.debug('adding instance name to name...')
+            server.config['name'] = '{}_{}'.format(
+                server.config['name'], server.config['current_instance'])
 
         result = command(*args, **kwargs)
         return result
@@ -110,6 +108,7 @@ def _run_parallel(context, command, **kwargs):
                 bar.update(completed)
                 previous_completed = completed
             time.sleep(1)
+
     logger.success(
         '\n{} {} @all completed'
         .format(command.name, config['name'])
