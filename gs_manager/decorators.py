@@ -79,6 +79,11 @@ def _run_parallel(context, command, **kwargs):
     logger = context.obj.logger
     processes = []
 
+    logger.info(
+        'running {} for {} @all completed...'
+        .format(command.name, config['name'])
+    )
+
     # create process for each instances
     for instance_name in config.get_instances():
         logger.debug(
@@ -115,7 +120,11 @@ def _run_parallel(context, command, **kwargs):
                 bar.update(completed)
                 previous_completed = completed
             time.sleep(1)
-        return [p.exitcode for p in processes]
+    logger.success(
+        '\n{} {} @all completed'
+        .format(command.name, config['name'])
+    )
+    return [p.exitcode for p in processes]
 
 
 def multi_instance(command):
@@ -130,15 +139,7 @@ def multi_instance(command):
                 'cannot use @all with -fg option')
         elif len(config.get_instances()) > 0:
             if config['parallel']:
-                logger.info(
-                    'running {} for {} @all completed...'
-                    .format(command.name, config['name'])
-                )
                 _run_parallel(context, original_command, **kwargs)
-                logger.success(
-                    '\n{} {} @all completed'
-                    .format(command.name, config['name'])
-                )
             else:
                 _run_sync(context, command, **kwargs)
         else:
