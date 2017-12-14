@@ -8,6 +8,7 @@ from gs_manager.config import Config
 
 
 def _instance_wrapper(command, all_callback):
+    """ wraps command callback and adds instance logic """
     def _wrapper(*args, **kwargs):
         context = click.get_current_context()
         server = context.obj
@@ -27,13 +28,13 @@ def _instance_wrapper(command, all_callback):
                 server.supports_multi_instance:
 
             server.logger.debug(
-                'no instance specific, but one found, adding...')
+                'no instance specified, setting...')
             server.config['current_instance'] = all_instances[0]
 
         if instance == '@all':
             return all_callback(context, *args, **kwargs)
         elif instance is not None:
-            server.logger.debug('adding instance name to name...')
+            server.logger.debug('adding instance to name...')
             server.config['name'] = '{}_{}'.format(
                 server.config['name'], server.config['current_instance'])
 
@@ -43,6 +44,7 @@ def _instance_wrapper(command, all_callback):
 
 
 def _run_sync(context, command):
+    """ runs command for each instance in @all synchronously """
     config = context.obj.config
     logger = context.obj.logger
     results = []
@@ -59,6 +61,7 @@ def _run_sync(context, command):
 
 
 def _run_parallel(context, command):
+    """ runs command for each instance in @all in parallel """
     config = context.obj.config
     logger = context.obj.logger
     processes = []
@@ -110,6 +113,10 @@ def _run_parallel(context, command):
 
 
 def single_instance(command):
+    """
+    decorator for a click command to enforce a single instance or zero
+    instances are passed in
+    """
     original_command = command.callback
 
     def all_callback(context, *args, **kwargs):
@@ -122,6 +129,9 @@ def single_instance(command):
 
 
 def multi_instance(command):
+    """
+    decorator for a click command to allow multiple instances to be passed in
+    """
     original_command = command.callback
 
     def all_callback(context, *args, **kwargs):
@@ -147,9 +157,12 @@ def multi_instance(command):
 
 
 def surpress(function):
-    def new_func(*args, **kwargs):
+    """
+    decorator to surpress all stdout for a method
+    """
+    def _wrapper(*args, **kwargs):
         with surpress_stdout():
             result = function(*args, **kwargs)
         return result
 
-    return new_func
+    return _wrapper
