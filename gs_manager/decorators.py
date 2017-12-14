@@ -57,6 +57,67 @@ def single_instance(command):
     return command
 
 
+def _run_sync(context, command, **kwargs):
+    config = context.obj.config
+    logger = context.obj.logger
+    results = []
+    for instance_name in config.get_instances():
+        logger.debug(
+            'running {} for instance: {}'
+            .format(command.name, instance_name))
+
+        kwargs['current_instance'] = instance_name
+        kwargs['multi'] = True
+        config.add_cli_config(kwargs)
+        result = command(**dict(context.params))
+        results.append(result)
+    return results
+
+
+def _run_parallel(context, command, **kwargs):
+    config = context.obj.config
+    logger = context.obj.logger
+    processes = []
+
+    # create process for each instances
+    for instance_name in config.get_instances():
+        logger.debug(
+            'spawning {} for instance: {}'
+            .format(command.name, instance_name)
+        )
+        copy_kwargs = copy.deepcopy(kwargs)
+        copy_config = Config(context)
+
+        copy_kwargs['current_instance'] = instance_name
+        copy_kwargs['multi'] = True
+        copy_config.add_cli_config(copy_kwargs)
+
+        context.obj.config = copy_config
+
+        p = Process(
+            target=surpress(command),
+            kwargs=dict(context.params),
+            daemon=True,
+        )
+        p.start()
+        processes.append(p)
+
+        bar = click.progressbar(length=len(processes))
+        completed = None
+        previous_completed = None
+        not_done = True
+        while not_done:
+            alive_list = [p.is_alive() for p in processes]
+            logger.debug('processes alive: {}'.format(alive_list))
+            not_done = any(alive_list)
+            completed = sum([int(not c) for c in alive_list])
+            if not completed == previous_completed:
+                bar.update(completed)
+                previous_completed = completed
+            time.sleep(1)
+        return [p.exitcode for p in processes]
+
+
 def multi_instance(command):
     original_command = command.callback
 
@@ -67,67 +128,19 @@ def multi_instance(command):
         if config['foreground']:
             raise click.ClickException(
                 'cannot use @all with -fg option')
-        elif len(config['instance_overrides'].keys()) > 0:
+        elif len(config.get_instances()) > 0:
             if config['parallel']:
-                processes = []
-
                 logger.info(
                     'running {} for {} @all completed...'
                     .format(command.name, config['name'])
                 )
-
-                for instance_name in config.get_instances():
-                    logger.debug(
-                        'spawning {} for instance: {}'
-                        .format(command.name, instance_name)
-                    )
-                    # copy_args = copy.deepcopy(args)
-                    copy_kwargs = copy.deepcopy(kwargs)
-                    copy_config = Config(context)
-
-                    copy_kwargs['current_instance'] = instance_name
-                    copy_kwargs['multi'] = True
-                    copy_config.add_cli_config(copy_kwargs)
-
-                    context.obj.config = copy_config
-
-                    p = Process(
-                        target=surpress(original_command),
-                        kwargs=dict(context.params),
-                    )
-                    p.start()
-                    processes.append(p)
-
-                bar = click.progressbar(length=len(processes))
-                completed = None
-                previous_completed = None
-                not_done = True
-                while not_done:
-                    alive_list = [p.is_alive() for p in processes]
-                    logger.debug('processes alive: {}'.format(alive_list))
-                    not_done = any(alive_list)
-                    completed = sum([int(not c) for c in alive_list])
-                    if not completed == previous_completed:
-                        bar.update(completed)
-                        previous_completed = completed
-                    time.sleep(1)
+                _run_parallel(context, original_command, **kwargs)
                 logger.success(
                     '\n{} {} @all completed'
                     .format(command.name, config['name'])
                 )
             else:
-                results = []
-                for instance_name in config.get_instances():
-                    logger.debug(
-                        'running {} for instance: {}'
-                        .format(command.name, instance_name))
-
-                    kwargs['current_instance'] = instance_name
-                    kwargs['multi'] = True
-                    config.add_cli_config(kwargs)
-                    result = original_command(*args, **kwargs)
-                    results.append(result)
-                return results
+                _run_sync(context, command, **kwargs)
         else:
             logger.debug(
                 'no valid instances found, removing current_instance...')
@@ -145,4 +158,3 @@ def surpress(function):
         return result
 
     return new_func
-    # return update_wrapper(new_func, function)
