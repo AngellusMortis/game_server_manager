@@ -1,6 +1,7 @@
 .log_offset
 .gs_config.json
 cc-test-reporter
+.cc_output.html
 
 # Created by https://www.gitignore.io/api/python,django,visualstudiocode
 
