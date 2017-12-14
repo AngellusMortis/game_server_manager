@@ -1,4 +1,3 @@
-import copy
 import time
 from functools import update_wrapper
 from multiprocessing import Process
@@ -17,7 +16,6 @@ def _instance_wrapper(command, all_callback):
 
         server.context = context
         server.config.add_cli_config(kwargs)
-
         server.logger.debug(
             'command start: {}'.format(context.command.name))
 
@@ -41,11 +39,10 @@ def _instance_wrapper(command, all_callback):
 
         result = command(*args, **kwargs)
         return result
-
     return _wrapper
 
 
-def _run_sync(context, command, **kwargs):
+def _run_sync(context, command):
     config = context.obj.config
     logger = context.obj.logger
     results = []
@@ -54,15 +51,14 @@ def _run_sync(context, command, **kwargs):
             'running {} for instance: {}'
             .format(command.name, instance_name))
 
-        kwargs['current_instance'] = instance_name
-        kwargs['multi'] = True
-        config.add_cli_config(kwargs)
+        config['current_instance'] = instance_name
+        config['multi'] = True
         result = command(**dict(context.params))
         results.append(result)
     return results
 
 
-def _run_parallel(context, command, **kwargs):
+def _run_parallel(context, command):
     config = context.obj.config
     logger = context.obj.logger
     processes = []
@@ -78,12 +74,9 @@ def _run_parallel(context, command, **kwargs):
             'spawning {} for instance: {}'
             .format(command.name, instance_name)
         )
-        copy_kwargs = copy.deepcopy(kwargs)
         copy_config = Config(context)
-
-        copy_kwargs['current_instance'] = instance_name
-        copy_kwargs['multi'] = True
-        copy_config.add_cli_config(copy_kwargs)
+        copy_config['current_instance'] = instance_name
+        copy_config['multi'] = True
 
         context.obj.config = copy_config
 
@@ -140,9 +133,9 @@ def multi_instance(command):
                 'cannot use @all with -fg option')
         elif len(config.get_instances()) > 0:
             if config['parallel']:
-                _run_parallel(context, original_command, **kwargs)
+                _run_parallel(context, original_command)
             else:
-                _run_sync(context, command, **kwargs)
+                _run_sync(context, command)
         else:
             logger.debug(
                 'no valid instances found, removing current_instance...')
