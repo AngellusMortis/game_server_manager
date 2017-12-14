@@ -2,9 +2,9 @@ import getpass
 import subprocess
 
 import pytest
-from gs_manager.utils import run_as_user, to_pascal_case, to_snake_case, SUDO_FORMAT
+from gs_manager.utils import (SUDO_FORMAT, run_as_user, to_pascal_case,
+                              to_snake_case)
 from mock import Mock, patch
-from io import StringIO
 
 MOCK_SUDO = 'echo {} "{}"'
 
@@ -169,6 +169,9 @@ def test_run_as_user_pipeline_3():
 def test_run_as_user_pipeline_5():
     user = getpass.getuser()
 
-    output = run_as_user(user, 'echo test | cat | xargs echo 2 | cat | xargs echo 3')
+    output = run_as_user(
+        user,
+        'echo test | cat | xargs echo 2 | cat | xargs echo 3'
+    )
 
     assert output == '3 2 test'
