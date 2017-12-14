@@ -1,6 +1,6 @@
 exclude_paths:
 - "versioneer.py"
-- "gs_server/_version.py"
+- "gs_manager/_version.py"
 - "config"
 - "db"
 - "dist"
