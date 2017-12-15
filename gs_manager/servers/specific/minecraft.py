@@ -41,8 +41,8 @@ class Minecraft(Java):
             'extra_args': 'nogui',
             'delay_start': 0,
             'save_command': 'save',
-            'add_property': None,
-            'remove_property': None,
+            'add_property': [],
+            'remove_property': [],
         })
         return defaults
 
@@ -50,18 +50,19 @@ class Minecraft(Java):
     def excluded_from_save():
         parent = Java.excluded_from_save()
         return parent + [
+            'accept_eula',
+            'add_property',
+            'beta',
+            'delay_start',
             'detailed',
+            'enable',
             'extra_args',
             'java_args',
+            'minecraft_version',
+            'remove_property',
+            'save_command',
             'say_command',
             'stop_command',
-            'delay_start',
-            'minecraft_version',
-            'beta',
-            'accept_eula',
-            'save_command',
-            'add_property',
-            'remove_property',
         ]
 
     @property
@@ -190,11 +191,11 @@ class Minecraft(Java):
                 raise click.ClickException(
                     'query is not enabled in server.properties')
 
+            query = None
             try:
                 if detailed:
-                    status = self.server.query()
-                else:
-                    status = self.server.status()
+                    query = self.server.query()
+                status = self.server.status()
             except ConnectionRefusedError:
                 self.logger.error(
                     '{} is running, but not accessible'
@@ -205,36 +206,36 @@ class Minecraft(Java):
                 self.logger.success(
                     '{} is running'.format(self.config['name'])
                 )
-                if detailed:
+                if query is not None:
                     self.logger.info(
                         'host: {}:{}'.format(
-                            status.raw['hostip'],
-                            status.raw['hostport'],
+                            query.raw['hostip'],
+                            query.raw['hostport'],
                         )
                     )
                     self.logger.info(
                         'software: v{} {}'.format(
-                            status.software.version,
-                            status.software.brand,
+                            query.software.version,
+                            query.software.brand,
                         )
                     )
+                self.logger.info(
+                    'version: v{} (protocol {})'.format(
+                        status.version.name,
+                        status.version.protocol,
+                    )
+                )
+                self.logger.info(
+                    'description: "{}"'.format(
+                        status.description,
+                    )
+                )
+                if query is not None:
                     self.logger.info(
-                        'plugins: {}'.format(status.software.plugins)
+                        'plugins: {}'.format(query.software.plugins)
                     )
                     self.logger.info(
-                        'motd: "{}"'.format(status.motd)
-                    )
-                else:
-                    self.logger.info(
-                        'version: v{} (protocol {})'.format(
-                            status.version.name,
-                            status.version.protocol,
-                        )
-                    )
-                    self.logger.info(
-                        'description: "{}"'.format(
-                            status.description,
-                        )
+                        'motd: "{}"'.format(query.motd)
                     )
 
                 self.logger.info(
@@ -244,8 +245,8 @@ class Minecraft(Java):
                     )
                 )
 
-                if detailed:
-                    self.logger.info(status.players.names)
+                if query is not None:
+                    self.logger.info(query.players.names)
                 return STATUS_SUCCESS
         else:
             self.logger.warning(
@@ -388,7 +389,7 @@ class Minecraft(Java):
     @click.argument('minecraft_version',
                     type=str, required=False)
     @click.pass_obj
-    def install(self, force, beta, minecraft_version, *args, **kwargs):
+    def install(self, force, beta, enable, minecraft_version, *args, **kwargs):
         """ installs a specific version of Minecraft """
 
         data = get_json(VERSIONS_URL)
@@ -440,22 +441,28 @@ class Minecraft(Java):
             'minecraft v{} installed'.format(minecraft_version))
 
         link_path = os.path.join(self.config['path'], 'minecraft_server.jar')
-        if not os.path.isfile(link_path) or self.config['enable']:
+        if not os.path.isfile(link_path) or enable:
             return self.invoke(
                 self.enable,
                 minecraft_version=minecraft_version,
             )
         return STATUS_SUCCESS
 
+    @single_instance
     @click.command()
     @click.option('-f', '--force',
                   is_flag=True)
     @click.argument('minecraft_version',
-                    type=str,
-                    required=False)
+                    type=str)
     @click.pass_obj
     def enable(self, force, minecraft_version, *args, **kwargs):
         """ enables a specific version of Minecraft """
+
+        if self.is_running(self.config['current_instance']):
+            self.logger.error(
+                '{} is still running'.format(self.config['name'])
+            )
+            return STATUS_FAILED
 
         jar_dir = os.path.join(self.config['path'], 'jars')
         jar_file = 'minecraft_server.{}.jar'.format(minecraft_version)
@@ -463,8 +470,12 @@ class Minecraft(Java):
         link_path = os.path.join(self.config['path'], 'minecraft_server.jar')
 
         if not os.path.isfile(jar_path):
-            raise click.ClickException(
-                'minecraft v{} is not installed'.format(minecraft_version))
+            raise click.BadParameter(
+                'minecraft v{} is not installed'
+                .format(minecraft_version),
+                self.context,
+                get_param_obj(self.context, 'minecraft_version')
+            )
 
         if not (os.path.islink(link_path) or force or
                 not os.path.isfile(link_path)):
@@ -485,4 +496,21 @@ class Minecraft(Java):
         self.run_as_user('ln -s {} {}'.format(jar_path, link_path))
 
         self.logger.success('minecraft v{} enabled'.format(minecraft_version))
+        return STATUS_SUCCESS
+
+    @single_instance
+    @click.command()
+    @click.pass_obj
+    def versions(self, *args, **kwargs):
+        """ lists installed versions of Minecraft """
+
+        jar_dir = os.path.join(self.config['path'], 'jars')
+
+        versions = []
+        for root, dirs, files in os.walk(jar_dir):
+            for filename in files:
+                if filename.endswith('.jar'):
+                    parts = filename.split('.')
+                    versions.append('.'.join(parts[1:-1]))
+        self.logger.info(versions)
         return STATUS_SUCCESS

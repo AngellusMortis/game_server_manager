@@ -171,7 +171,7 @@ class Base(object):
             return True
         return False
 
-    def _stop(self):
+    def _stop(self, pid=None):
         if hasattr(self, 'command') and \
                 isinstance(self.command, click.Command) and \
                 self.config['stop_command'] is not None:
@@ -189,7 +189,8 @@ class Base(object):
                 do_print=False
             )
         else:
-            pid = self.get_pid(self.config['current_instance'])
+            if pid is None:
+                pid = self.get_pid(self.config['current_instance'])
             if pid is not None:
                 self.run_as_user(
                     'kill -{} {}'.format(
@@ -402,8 +403,10 @@ class Base(object):
                         stdout=DEVNULL,
                     )
 
-                command = i_config['command'].replace('"', '\\"')
-                command = command.replace('?', '\\?')
+                command = i_config['command'].replace('"', '\\"') \
+                    .replace('?', '\\?') \
+                    .replace('+', '\\+') \
+                    .strip()
                 pids = self.run_as_user(
                     'ps -ef --sort=start_time | '
                     'grep -i -P "(?<!grep -i |-c ){}$" | awk \'{{print $2}}\''

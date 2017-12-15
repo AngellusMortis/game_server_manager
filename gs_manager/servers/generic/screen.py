@@ -4,7 +4,8 @@ from subprocess import CalledProcessError
 import click
 import psutil
 from gs_manager.decorators import multi_instance, single_instance
-from gs_manager.servers.base import Base
+
+from ..base import STATUS_FAILED, STATUS_SUCCESS, Base
 
 
 class Screen(Base):
@@ -32,50 +33,46 @@ class Screen(Base):
             'command_string',
             'do_print',
             'message',
+            'spawn_process'
         ]
 
     def _clear_screens(self):
         try:
-            self.run_as_user('screen --wipe')
+            self.run_as_user('screen -wipe')
         except CalledProcessError:
             pass
 
-    def get_pid(self, instance_name=None):
-        pid = self._read_pid_file(instance_name)
-
+    def _stop(self, pid=None):
         if pid is None:
-            screen = None
-            try:
-                screen = self.run_as_user(
-                    'screen -ls | grep {}'
-                    .format(self.config['name'])).strip()
-            except CalledProcessError as ex:
-                self.logger.debug(ex.output)
+            instance = self.config['current_instance']
+            pid = self._get_child_pid(instance)
+        return super(Screen, self)._stop(pid=pid)
 
-            if screen is not None and screen != '':
-                pid = int(re.match('\d+', screen).group())
-
-            self._write_pid_file(pid, instance_name)
-        return pid
-
-    def is_running(self, instance_name=None):
-        is_running = False
+    def _get_child_pid(self, instance_name=None):
         pid = self.get_pid(instance_name)
-
         try:
             screen_process = psutil.Process(pid)
         except psutil.NoSuchProcess:
             self._delete_pid_file(instance_name)
+            pid = None
         else:
-            child_count = len(screen_process.children())
+            children = screen_process.children()
+            child_count = len(children)
             if child_count == 1:
-                is_running = True
+                pid = children[0].pid
             elif child_count == 0:
                 self._clear_screens()
             else:
                 raise click.ClickException(
-                    'Unexpected number of child proceses for screen')
+                    'Unexpected number of child proceses for screen'
+                )
+        return pid
 
+    def is_running(self, instance_name=None):
+        is_running = False
+        pid = self._get_child_pid(instance_name)
+        if pid is not None:
+            is_running = True
         self.logger.debug('is_running: {}'.format(is_running))
         return is_running
 
@@ -145,11 +142,12 @@ class Screen(Base):
 
             if do_print:
                 self.logger.info(output)
-            return output
+            return STATUS_SUCCESS
         else:
             self.logger.warning(
                 '{} is not running'.format(self.config['name'])
             )
+            return STATUS_FAILED
 
     @multi_instance
     @click.command()
