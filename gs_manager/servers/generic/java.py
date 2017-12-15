@@ -1,13 +1,10 @@
-import os
-from subprocess import CalledProcessError
-
 import click
 from gs_manager.decorators import multi_instance
-from gs_manager.servers.custom_screen import CustomScreen
-from gs_manager.utils import get_param_obj
+
+from .screen import Screen
 
 
-class Java(CustomScreen):
+class Java(Screen):
     """
     Generic Java base gameserver that can be ran with Screen.
     Requires additional configuration to work.
@@ -16,7 +13,7 @@ class Java(CustomScreen):
 
     @staticmethod
     def defaults():
-        defaults = CustomScreen.defaults()
+        defaults = Screen.defaults()
         defaults.update({
             'extra_args': '',
             'java_args': '',
@@ -27,7 +24,7 @@ class Java(CustomScreen):
 
     @staticmethod
     def excluded_from_save():
-        parent = CustomScreen.excluded_from_save()
+        parent = Screen.excluded_from_save()
         return parent + [
             'command',
         ]
@@ -69,25 +66,9 @@ class Java(CustomScreen):
     def start(self, no_verify, *args, **kwargs):
         """ starts java gameserver """
 
-        if self.config['server_jar'] is None:
-            raise click.BadParameter(
-                'must provide a server_jar',
-                self.context, get_param_obj(self.context, 'server_jar'))
-        elif not os.path.isfile(self.config['server_jar']):
-            raise click.BadParameter(
-                'cannot find server_jar: {}'.format(self.config['server_jar']),
-                self.context, get_param_obj(self.context, 'server_jar'))
-        else:
-            try:
-                self.run_as_user('which {}'.format(self.config['java_path']))
-            except CalledProcessError:
-                raise click.BadParameter(
-                    'cannot find java executable: {}'
-                    .format(self.config['java_path']),
-                    self.context, get_param_obj(self.context, 'java_path')
-                )
-            else:
-                self.logger.debug('found java')
+        self._require_param(self.config, 'server_jar')
+        self._require_file(self.config['server_jar'], 'server_jar')
+        self._require_command(self.config['java_path'], 'java_path')
 
         command = self.command_format.format(
             self.config['java_path'],
@@ -95,7 +76,7 @@ class Java(CustomScreen):
             self.config['server_jar'],
             self.config['extra_args'],
         )
-        self.invoke(
+        return self.invoke(
             super(Java, self).start,
             command=command,
             no_verify=no_verify,

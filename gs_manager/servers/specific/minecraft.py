@@ -6,10 +6,13 @@ from socket import timeout
 import click
 import click_spinner
 from gs_manager.decorators import multi_instance, single_instance
-from gs_manager.servers.java import Java
 from gs_manager.utils import download_file, get_json, get_param_obj
+from gs_manager.validators import validate_key_value
 from mcstatus import MinecraftServer
 from pygtail import Pygtail
+
+from ..generic import Java
+from ..base import STATUS_FAILED, STATUS_PARTIAL_FAIL, STATUS_SUCCESS
 
 VERSIONS_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest.json'
 EULA_URL = 'https://account.mojang.com/documents/minecraft_eula'
@@ -47,6 +50,7 @@ class Minecraft(Java):
     def excluded_from_save():
         parent = Java.excluded_from_save()
         return parent + [
+            'detailed',
             'extra_args',
             'java_args',
             'say_command',
@@ -72,11 +76,7 @@ class Minecraft(Java):
                     'could not find server.properties for Minecraft server')
 
             with open(config_path) as config_file:
-                for line in config_file:
-                    line = line.strip()
-                    if not line.startswith('#'):
-                        option = line.split('=')
-                        self._mc_config[option[0]] = option[1]
+                self._mc_config = validate_key_value(None, None, config_file)
             self.logger.debug('server.properties:')
             self.logger.debug(self._mc_config)
 
@@ -96,6 +96,44 @@ class Minecraft(Java):
             self.logger.debug('Minecraft server: {}:{}'.format(ip, port))
             self._server = MinecraftServer(ip, int(port))
         return self._server
+
+    def _process_log_file(self, log_file, instance_name):
+        offset_file = '.log_offset'
+        if os.path.isfile(offset_file):
+            os.remove(offset_file)
+        tail = Pygtail(log_file, offset_file=offset_file)
+        loops_since_check = 0
+        processing = True
+        done_match = False
+        with click_spinner.spinner():
+            while processing:
+                for line in tail.readlines():
+                    self.logger.debug('log: {}'.format(line))
+                    done_match = re.search(
+                        'Done \((\d+\.\d+)s\)! For help,',
+                        line
+                    ) is not None
+                    if done_match:
+                        processing = False
+                    elif 'agree to the EULA' in line:
+                        self.logger.info('')
+                        raise click.ClickException(
+                            'You must agree to Mojang\'s EULA. '
+                            'Please read {} and restart server '
+                            'with --accept_eula'.format(EULA_URL))
+
+                if loops_since_check < 5:
+                    loops_since_check += 1
+                elif self.is_running(instance_name):
+                    loops_since_check = 0
+                else:
+                    self.logger.error(
+                        '{} failed to start'.format(self.config['name']))
+                    processing = False
+                time.sleep(1)
+        if os.path.isfile(offset_file):
+            os.remove(offset_file)
+        return done_match
 
     def _startup_check(self, instance_name=None):
         log_file = os.path.join(self.config['path'], 'logs', 'latest.log')
@@ -118,42 +156,13 @@ class Minecraft(Java):
             time.sleep(0.1)
 
         if os.path.isfile(log_file):
-            offset_file = '.log_offset'
-            if os.path.isfile(offset_file):
-                os.remove(offset_file)
-            tail = Pygtail(log_file, offset_file=offset_file)
-            loops_since_check = 0
-            processing = True
-            with click_spinner.spinner():
-                while processing:
-                    for line in tail.readlines():
-                        self.logger.debug('log: {}'.format(line))
-                        done_match = re.search(
-                            'Done \((\d+\.\d+)s\)! For help,',
-                            line
-                        )
-                        if done_match:
-                            self.logger.info(
-                                '\nverifying Minecraft server is up...', nl=False)
-                            return super(Minecraft, self)._startup_check(
-                                instance_name)
-                        elif 'agree to the EULA' in line:
-                            raise click.ClickException(
-                                'You much agree to Mojang\'s EULA. '
-                                'Please read {} and restart server '
-                                'with --accept_eula'.format(EULA_URL))
-
-                    if loops_since_check < 5:
-                        loops_since_check += 1
-                    elif self.is_running(instance_name):
-                        loops_since_check = 0
-                    else:
-                        self.logger.error(
-                            '{} failed to start'.format(self.config['name']))
-                        processing = False
-                    time.sleep(1)
-            if os.path.isfile(offset_file):
-                os.remove(offset_file)
+            if self._process_log_file(log_file, instance_name):
+                self.logger.info(
+                    '\nverifying Minecraft server is up...',
+                    nl=False,
+                )
+                return super(Minecraft, self)._startup_check(
+                    instance_name)
         else:
             raise click.ClickException(
                 'could not find log file: {}'
@@ -169,43 +178,80 @@ class Minecraft(Java):
 
     @multi_instance
     @click.command()
+    @click.option('-d', '--detailed',
+                  is_flag=True,
+                  help='returns more detatiled infomation about the server')
     @click.pass_obj
-    def status(self, *args, **kwargs):
+    def status(self, detailed, *args, **kwargs):
         """ checks if Minecraft server is running or not """
 
-        if self.is_running():
-            status = None
+        if self.is_running(self.config['current_instance']):
+            if detailed and not self.mc_config.get('enable-query') == 'true':
+                raise click.ClickException(
+                    'query is not enabled in server.properties')
+
             try:
-                status = self.server.status()
-            except ConnectionRefusedError as ex:
+                if detailed:
+                    status = self.server.query()
+                else:
+                    status = self.server.status()
+            except ConnectionRefusedError:
                 self.logger.error(
                     '{} is running, but not accessible'
                     .format(self.config['name'])
                 )
+                return STATUS_FAILED
             else:
                 self.logger.success(
                     '{} is running'.format(self.config['name'])
                 )
-                self.logger.info(
-                    'version: v{} (protocol {})'.format(
-                        status.version.name,
-                        status.version.protocol
+                if detailed:
+                    self.logger.info(
+                        'host: {}:{}'.format(
+                            status.raw['hostip'],
+                            status.raw['hostport'],
+                        )
                     )
-                )
-                self.logger.info(
-                    'description: "{}"'.format(
-                        status.description
+                    self.logger.info(
+                        'software: v{} {}'.format(
+                            status.software.version,
+                            status.software.brand,
+                        )
                     )
-                )
+                    self.logger.info(
+                        'plugins: {}'.format(status.software.plugins)
+                    )
+                    self.logger.info(
+                        'motd: "{}"'.format(status.motd)
+                    )
+                else:
+                    self.logger.info(
+                        'version: v{} (protocol {})'.format(
+                            status.version.name,
+                            status.version.protocol,
+                        )
+                    )
+                    self.logger.info(
+                        'description: "{}"'.format(
+                            status.description,
+                        )
+                    )
 
                 self.logger.info(
                     'players: {}/{}'.format(
                         status.players.online,
-                        status.players.max
+                        status.players.max,
                     )
                 )
+
+                if detailed:
+                    self.logger.info(status.players.names)
+                return STATUS_SUCCESS
         else:
-            self.logger.warning('{} is not running'.format(self.config['name']))
+            self.logger.warning(
+                '{} is not running'.format(self.config['name'])
+            )
+            return STATUS_PARTIAL_FAIL
 
     @multi_instance
     @click.command()
@@ -265,9 +311,10 @@ class Minecraft(Java):
         )
 
         if self.config['add_property'] or self.config['remove_property']:
-            for p in self.config['add_property']:
-                server_property = p.split('=')
-                self.mc_config[server_property[0]] = server_property[1]
+            properties = validate_key_value(
+                None, None, self.config['add_property']
+            )
+            self.mc_config.update(properties)
 
             for server_property in self.config['remove_property']:
                 del self.mc_config[server_property]
@@ -285,7 +332,7 @@ class Minecraft(Java):
             eula_path = os.path.join(self.config['path'], 'eula.txt')
             self.write_as_user(eula_path, 'eula=true')
 
-        self.invoke(
+        return self.invoke(
             super(Minecraft, self).start,
             java_args=java_args,
             no_verify=no_verify,
@@ -308,13 +355,13 @@ class Minecraft(Java):
             tail = Pygtail(log_file, offset_file=offset_file)
             tail.readlines()
 
-        output = self.invoke(
+        status = self.invoke(
             super(Minecraft, self).command,
             command_string=command_string,
             do_print=False
         )
 
-        if output is not None and do_print and tail is not None:
+        if status == STATUS_SUCCESS and do_print and tail is not None:
             time.sleep(1)
             self.logger.debug('looking for command output...')
             for line in tail.readlines():
@@ -328,54 +375,7 @@ class Minecraft(Java):
                         self.logger.info(message)
             if os.path.isfile(offset_file):
                 os.remove(offset_file)
-
-    @multi_instance
-    @click.command()
-    @click.pass_obj
-    def query(self, *args, **kwargs):
-        """ retrieves extended information about server if it is running """
-
-        if not self.mc_config.get('enable-query') == 'true':
-            raise click.ClickException(
-                'query is not enabled in server.properties')
-
-        if self.is_running():
-            query = None
-            try:
-                query = self.server.query()
-            except timeout:
-                self.logger.error(
-                    '{} is running, but not accessible'
-                    .format(self.config['name'])
-                )
-            else:
-                self.logger.info(
-                    'host: {}:{}'.format(
-                        query.raw['hostip'],
-                        query.raw['hostport'],
-                    )
-                )
-                self.logger.info(
-                    'software: v{} {}'.format(
-                        query.software.version,
-                        query.software.brand,
-                    )
-                )
-                self.logger.info(
-                    'plugins: {}'.format(query.software.plugins)
-                )
-                self.logger.info(
-                    'motd: "{}"'.format(query.motd)
-                )
-                self.logger.info(
-                    'players: {}/{} {}'.format(
-                        query.players.online,
-                        query.players.max,
-                        query.players.names,
-                    )
-                )
-        else:
-            self.logger.warning('{} is not running'.format(self.config['name']))
+        return status
 
     @single_instance
     @click.command()
@@ -441,10 +441,11 @@ class Minecraft(Java):
 
         link_path = os.path.join(self.config['path'], 'minecraft_server.jar')
         if not os.path.isfile(link_path) or self.config['enable']:
-            self.invoke(
+            return self.invoke(
                 self.enable,
                 minecraft_version=minecraft_version,
             )
+        return STATUS_SUCCESS
 
     @click.command()
     @click.option('-f', '--force',
@@ -484,3 +485,4 @@ class Minecraft(Java):
         self.run_as_user('ln -s {} {}'.format(jar_path, link_path))
 
         self.logger.success('minecraft v{} enabled'.format(minecraft_version))
+        return STATUS_SUCCESS

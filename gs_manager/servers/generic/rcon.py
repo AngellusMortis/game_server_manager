@@ -2,13 +2,13 @@ import signal
 
 import click
 from gs_manager.decorators import multi_instance, single_instance
-from gs_manager.servers.base import STATUS_PARTIAL_FAIL
-from gs_manager.servers.custom_steam import CustomSteam
-from gs_manager.utils import get_param_obj
 from valve.rcon import RCON, shell
 
+from ..base import STATUS_FAILED, STATUS_PARTIAL_FAIL, STATUS_SUCCESS
+from .steam import Steam
 
-class CustomRcon(CustomSteam):
+
+class Rcon(Steam):
     """
     Generic Steam gameserver with `Source RCON protocol`_ support.
     Requires additional configuration to work.
@@ -18,21 +18,21 @@ class CustomRcon(CustomSteam):
 
     @staticmethod
     def defaults():
-        defaults = CustomSteam.defaults()
+        defaults = Steam.defaults()
         defaults.update({
-            'rcon_port': None,
-            'rcon_password': None,
-            'rcon_timeout': 10,
             'rcon_multi_part': False,
-            'stop_command': None,
-            'say_command': None,
+            'rcon_password': None,
+            'rcon_port': None,
+            'rcon_timeout': 10,
             'save_command': None,
+            'say_command': None,
+            'stop_command': None,
         })
         return defaults
 
     @staticmethod
     def excluded_from_save():
-        parent = CustomSteam.excluded_from_save()
+        parent = Steam.excluded_from_save()
         return parent + [
             'command_string',
             'do_print',
@@ -41,7 +41,7 @@ class CustomRcon(CustomSteam):
 
     @staticmethod
     def global_options():
-        global_options = CustomSteam.global_options()
+        global_options = Steam.global_options()
         all_options = [
             {
                 'param_decls': ('-rp', '--rcon_port'),
@@ -86,7 +86,7 @@ class CustomRcon(CustomSteam):
         return args
 
     def is_accessible(self, instance_name=None):
-        is_accessible = super(CustomRcon, self).is_accessible(instance_name)
+        is_accessible = super(Rcon, self).is_accessible(instance_name)
         if is_accessible and self.is_rcon_enabled(instance_name):
             rcon = RCON(**self._get_rcon_args(instance_name))
             try:
@@ -146,6 +146,7 @@ class CustomRcon(CustomSteam):
                     rcon.connect()
                 except ConnectionRefusedError:
                     self.logger.warning('could not connect to RCON')
+                    return STATUS_FAILED
                 else:
                     rcon.authenticate()
                     output = rcon.execute(command_string).text
@@ -155,7 +156,7 @@ class CustomRcon(CustomSteam):
                         if self.config['multi']:
                             self.logger.success('{}:'.format(i_config['name']))
                         self.logger.info(output)
-                    return output
+                    return STATUS_SUCCESS
             else:
                 self.logger.warning(
                     '{} does not have RCON enabled'
@@ -176,11 +177,7 @@ class CustomRcon(CustomSteam):
 
         instance = self.config['current_instance']
         i_config = self.config.get_instance_config(instance)
-
-        if i_config['save_command'] is None:
-            raise click.BadParameter(
-                'must provide a save command',
-                self.context, get_param_obj(self.context, 'save_command'))
+        self._require_param(i_config, 'save_command')
 
         return self.invoke(
             self.command,
@@ -200,11 +197,7 @@ class CustomRcon(CustomSteam):
 
         instance = self.config['current_instance']
         i_config = self.config.get_instance_config(instance)
-
-        if i_config['say_command'] is None:
-            raise click.BadParameter(
-                'must provide a say command format',
-                self.context, get_param_obj(self.context, 'say_command'))
+        self._require_param(i_config, 'say_command')
 
         return self.invoke(
             self.command,

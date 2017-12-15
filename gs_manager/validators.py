@@ -42,21 +42,34 @@ def validate_instance_overrides(context, param, values):
 
 def validate_key_value(context, param, values):
     return_dict = {}
+    valid = True
     for value in values:
+        if value.startswith('#') or value.startswith('='):
+            valid = False
+            continue
+
         parts = value.split('=')
-        if len(parts) <= 2 and not parts[0] == '':
+        if len(parts) > 2:
+            valid = False
+            continue
+
+        if len(parts) == 1:
             value = None
-            if len(parts) == 2:
-                value = parts[1]
-            return_dict[parts[0]] = value
-        else:
-            raise click.BadParameter(
-                'invalid server key-value pair', context, param)
+        elif len(parts) == 2:
+            value = parts[1].strip()
+        return_dict[parts[0]] = value
+
+    if not valid and context is not None and param is not None:
+        raise click.BadParameter(
+            'invalid server key-value pair',
+            context,
+            param,
+        )
     return return_dict
 
 
 def validate_string_value(context, param, value):
-    if len(param) > 0:
+    if len(value) > 0:
         match = re.match('^[^|]+$', value, re.I)
         if not match or not match.group() == value:
             raise click.BadParameter(

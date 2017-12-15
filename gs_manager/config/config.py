@@ -15,7 +15,7 @@ try:
 except ImportError:
     JSONError = ValueError
 
-DEFAULT_SERVER_TYPE = 'base'
+DEFAULT_SERVER_TYPE = 'screen'
 
 
 class Config(DictConfig):
@@ -158,7 +158,7 @@ class Config(DictConfig):
     def _is_empty_option(self, param):
         return param is None or \
             param is False or \
-            (hasattr(param, '__iter__') and len(param) > 0)
+            (hasattr(param, '__iter__') and len(param) == 0)
 
     def _get_cli_config(self, params):
         config = {}

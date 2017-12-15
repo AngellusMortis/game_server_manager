@@ -134,7 +134,7 @@ Install/Start
 
 Assuming you want the server to run as user `ark` with all of the default settings and no mods::
 
-        gs -t ark -u ark -s validate
+        gs -t ark -u ark -s install
         gs start
         gs status
 

@@ -29,36 +29,36 @@ class Base(object):
     @staticmethod
     def defaults():
         return {
+            'command': None,
             'config': '.gs_config.json',
-            'type': DEFAULT_SERVER_TYPE,
-            'user': 'root',
-            'name': 'gameserver',
+            'current_instance': None,
+            'delay_prestop': 30,
+            'delay_start': 1,
+            'foreground': False,
+            'instance_overrides': {},
             'max_start': 60,
             'max_stop': 30,
-            'delay_start': 1,
-            'delay_prestop': 30,
-            'instance_overrides': {},
-            'current_instance': None,
-            'command': None,
             'multi': False,
-            'foreground': False,
-            'spawn_process': False,
+            'name': 'gameserver',
             'parallel': False,
+            'spawn_process': False,
+            'type': DEFAULT_SERVER_TYPE,
+            'user': 'root',
         }
 
     @staticmethod
     def excluded_from_save():
         return [
             'config',
-            'debug',
-            'help',
-            'save',
-            'path',
-            'force',
-            'no_verify',
             'current_instance',
+            'debug',
+            'force',
             'foreground',
+            'help',
+            'no_verify',
             'parallel',
+            'path',
+            'save',
         ]
 
     @staticmethod
@@ -211,6 +211,30 @@ class Base(object):
                     break
                 time.sleep(1)
 
+    def _require_param(self, config, param):
+        if config[param] is None:
+            raise click.BadParameter(
+                'must provide {}'.format(param),
+                self.context, get_param_obj(self.context, param)
+            )
+
+    def _require_file(self, path, param):
+        if not os.path.isfile(path):
+            raise click.BadParameter(
+                'cannot find {}: {}'.format(param, path),
+                self.context, get_param_obj(self.context, param))
+
+    def _require_command(self, command, param):
+        try:
+            self.run_as_user('which {}'.format(command))
+        except CalledProcessError:
+            raise click.BadParameter(
+                'cannot find {} executable: {}'
+                .format(param, command),
+                self.context,
+                get_param_obj(self.context, param),
+            )
+
     def is_running(self, instance_name=None):
         """ checks if gameserver is running """
         if instance_name == '@any':
@@ -288,8 +312,9 @@ class Base(object):
                     .format(i_config['name']))
                 return STATUS_PARTIAL_FAIL
         else:
-            self.logger.warning('{} is not running'
-                                .format(i_config['name']))
+            self.logger.warning(
+                '{} is not running'.format(i_config['name'])
+            )
             return STATUS_FAILED
 
     @multi_instance
@@ -322,13 +347,9 @@ class Base(object):
     def start(self, no_verify, *args, **kwargs):
         """ starts gameserver """
 
-        if self.config['command'] is None:
-            raise click.BadParameter(
-                'must provide a start command',
-                self.context, get_param_obj(self.context, 'command'))
-
         instance = self.config['current_instance']
         i_config = self.config.get_instance_config(instance)
+        self._require_param(i_config, 'command')
 
         if self.is_running(instance):
             self.logger.warning(
@@ -403,7 +424,7 @@ class Base(object):
                     if self.is_running(instance):
                         if self.is_accessible(instance):
                             self.logger.success(
-                                '{} is running'.format(i_config['name']))
+                                '\n{} is running'.format(i_config['name']))
                             return STATUS_SUCCESS
                         else:
                             self.logger.error(

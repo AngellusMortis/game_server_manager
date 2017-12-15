@@ -5,10 +5,9 @@ import click
 import psutil
 from gs_manager.decorators import multi_instance, single_instance
 from gs_manager.servers.base import Base
-from gs_manager.utils import get_param_obj
 
 
-class CustomScreen(Base):
+class Screen(Base):
     """
     Generic gameserver that has an interactive console and can easily be
     ran via the screen command. Requires additional configuration to work.
@@ -20,9 +19,9 @@ class CustomScreen(Base):
         defaults = Base.defaults()
         defaults.update({
             'history': 1024,
+            'save_command': None,
             'say_command': None,
             'stop_command': None,
-            'save_command': None,
         })
         return defaults
 
@@ -121,7 +120,7 @@ class CustomScreen(Base):
 
         self._clear_screens()
         self.invoke(
-            super(CustomScreen, self).start,
+            super(Screen, self).start,
             command=command,
             no_verify=no_verify,
         )
@@ -148,7 +147,9 @@ class CustomScreen(Base):
                 self.logger.info(output)
             return output
         else:
-            self.logger.warning('{} is not running'.format(self.config['name']))
+            self.logger.warning(
+                '{} is not running'.format(self.config['name'])
+            )
 
     @multi_instance
     @click.command()
@@ -161,11 +162,7 @@ class CustomScreen(Base):
 
         instance = self.config['current_instance']
         i_config = self.config.get_instance_config(instance)
-
-        if i_config['save_command'] is None:
-            raise click.BadParameter(
-                'must provide a save command',
-                self.context, get_param_obj(self.context, 'save_command'))
+        self._require_param(i_config, 'save_command')
 
         return self.invoke(
             self.command,
@@ -183,10 +180,9 @@ class CustomScreen(Base):
     def say(self, message, do_print=True, *args, **kwargs):
         """ broadcasts a message to gameserver """
 
-        if self.config['say_command'] is None:
-            raise click.BadParameter(
-                'must provide a say command format',
-                self.context, get_param_obj(self.context, 'say_command'))
+        instance = self.config['current_instance']
+        i_config = self.config.get_instance_config(instance)
+        self._require_param(i_config, 'say_command')
 
         return self.invoke(
             self.command,

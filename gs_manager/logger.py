@@ -39,7 +39,7 @@ class ClickLogger(logging.getLoggerClass()):
     """ Wrapper around default logging class that also calls click.echo """
     click_debug = False
 
-    def _secho(message, **kwargs):
+    def _secho(self, message, **kwargs):
         if isinstance(message, (list, dict)):
             message = pprint.pformat(message)
         if not isinstance(message, str):

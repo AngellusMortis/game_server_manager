@@ -6,12 +6,11 @@ from threading import Thread
 import click
 import click_spinner
 from gs_manager.decorators import multi_instance, single_instance
-from gs_manager.servers.base import (STATUS_FAILED, STATUS_PARTIAL_FAIL,
-                                     STATUS_SUCCESS, Base)
-from gs_manager.utils import get_param_obj
 from gs_manager.validators import validate_int_list
 from valve.source import NoResponseError
 from valve.source.a2s import ServerQuerier
+
+from ..base import STATUS_FAILED, STATUS_PARTIAL_FAIL, STATUS_SUCCESS, Base
 
 try:
     from queue import Queue, Empty
@@ -19,13 +18,13 @@ except ImportError:
     from Queue import Queue, Empty
 
 
-def enqueue_output(out, queue):
+def _enqueue_output(out, queue):
     for line in iter(out.readline, b''):
         queue.put(line)
     out.close()
 
 
-class CustomSteam(Base):
+class Steam(Base):
     """
     Generic gameserver that can be installed and updated from Steam.
     Also, optionally support Steam workshop. Requires additional
@@ -38,12 +37,12 @@ class CustomSteam(Base):
     def defaults():
         defaults = Base.defaults()
         defaults.update({
-            'steamcmd_path': 'steamcmd',
             'app_id': None,
-            'workshop_id': None,
-            'workshop_items': [],
             'steam_query_ip': '127.0.0.1',
             'steam_query_port': 27015,
+            'steamcmd_path': 'steamcmd',
+            'workshop_id': None,
+            'workshop_items': [],
         })
         return defaults
 
@@ -84,15 +83,33 @@ class CustomSteam(Base):
                 return False
         return True
 
-    def _wait_until_validated(self, process, detailed_status=False):
+    def _parse_line(self, bar, line):
+        step_name = line.group('step_name')
+        current = int(line.group('current'))
+        total = int(line.group('total'))
+        self.logger.debug(
+            'processed: {}: {} / {}'
+            .format(step_name, current, total)
+        )
+        if bar is None and current < total:
+            bar = click.progressbar(
+                length=total, show_eta=False,
+                show_percent=True, label=step_name
+            )
+        if bar is not None:
+            bar.update(current)
 
+    def _wait_until_validated(self, process, detailed_status=False):
         if detailed_status:
             # this does not work as expected because of a steamcmd bug
             # https://github.com/ValveSoftware/Source-1-Games/issues/1684
             # https://github.com/ValveSoftware/Source-1-Games/issues/1929
             buffer = Queue()
-            thread = Thread(target=enqueue_output, args=(process.stdout, buffer))
-            thread.daemon = True
+            thread = Thread(
+                target=_enqueue_output,
+                args=(process.stdout, buffer),
+                daemon=True,
+            )
             thread.start()
 
             bar = None
@@ -104,28 +121,13 @@ class CustomSteam(Base):
             self.logger.debug('start processing output...')
             while True:
                 try:
-                    line = buffer.get_nowait()
+                    line = buffer.get_nowait().decode('utf-8').strip()
                 except Empty:
                     time.sleep(0.1)
                 else:
-                    line = line.decode('utf-8').strip()
                     self.logger.debug('line: {}'.format(line))
-                    line_parse = line_re.match(line)
-                    if line_parse:
-                        step_name = line_parse.group('step_name')
-                        current = int(line_parse.group('current'))
-                        total = int(line_parse.group('total'))
-                        self.logger.debug(
-                            'processed: {}: {} / {}'
-                            .format(step_name, current, total)
-                        )
-                        if bar is None and current < total:
-                            bar = click.progressbar(
-                                length=total, show_eta=False,
-                                show_percent=True, label=step_name
-                            )
-                        if bar is not None:
-                            bar.update(current)
+                    self._parse_line(bar, line_re.match(line))
+
                 if process.poll() is not None and buffer.empty():
                     break
         else:
@@ -165,7 +167,8 @@ class CustomSteam(Base):
                     '{} is running'.format(self.config['name'])
                 )
                 self.logger.info(
-                    'server name: {}'.format(server_info['server_name']))
+                    'server name: {}'.format(server_info['server_name'])
+                )
                 self.logger.info('map: {}'.format(server_info['map']))
                 self.logger.info('game: {}'.format(server_info['game']))
                 self.logger.info(
@@ -173,36 +176,39 @@ class CustomSteam(Base):
                     .format(
                         server_info['player_count'],
                         server_info['max_players'],
-                        server_info['bot_count']
+                        server_info['bot_count'],
                     )
                 )
                 self.logger.info(
-                    'server type: {}'.format(server_info['server_type']))
+                    'server type: {}'.format(server_info['server_type'])
+                )
                 self.logger.info(
                     'password protected: {}'
-                    .format(server_info['password_protected']))
+                    .format(server_info['password_protected'])
+                )
                 self.logger.info('VAC: {}'.format(server_info['vac_enabled']))
                 self.logger.info('version: {}'.format(server_info['version']))
             except NoResponseError:
                 self.logger.error(
                     '{} is running but not accesible'
-                    .format(i_config['name']))
+                    .format(i_config['name'])
+                )
         else:
             self.logger.warning('{} is not running'.format(i_config['name']))
 
     @single_instance
     @click.command()
     @click.pass_obj
-    def validate(self, *args, **kwargs):
-        """ validates and update the gameserver """
-        if self.config['app_id'] is None:
-            raise click.BadParameter(
-                'must provide app_id of game',
-                self.context, get_param_obj(self.context, 'app_id'))
+    def install(self, *args, **kwargs):
+        """ installs/validates/updates the gameserver """
+
+        self._require_param(self.config, 'app_id')
+        self._require_command(self.config['steamcmd_path'], 'steamcmd_path')
 
         if self.is_running('@any'):
             self.logger.warning(
-                '{} is still running'.format(self.config['name']))
+                '{} is still running'.format(self.config['name'])
+            )
             return STATUS_PARTIAL_FAIL
         else:
             process = self.run_as_user(
@@ -241,41 +247,46 @@ class CustomSteam(Base):
     @click.pass_obj
     def workshop_download(self, *args, **kwargs):
         """ downloads Steam workshop items """
-        if self.config['workshop_id'] is None:
-            raise click.BadParameter(
-                'must provide workshop_id of game',
-                self.context, get_param_obj(self.context, 'workshop_id'))
+
+        self._require_param(self.config, 'workshop_id')
 
         if self.is_running('@any'):
             self.logger.warning(
                 '{} is still running'.format(self.config['name']))
-            return STATUS_PARTIAL_FAIL
+            status = STATUS_PARTIAL_FAIL
         else:
-            self.invoke(
-                self.validate,
+            status = self.invoke(
+                self.install,
                 app_id=self.config['workshop_id'],
             )
 
-            self.logger.info('downloading workshop items...')
-            with click.progressbar(self.config['workshop_items']) as bar:
-                for workshop_item in bar:
-                    try:
-                        self.run_as_user(
-                            '{} +login anonymous +force_install_dir {} +workshop_download_item {} {} +quit'
-                            .format(
-                                self.config['steamcmd_path'],
-                                self.config['path'],
-                                self.config['workshop_id'],
-                                workshop_item,
-                            ),
-                        )
-                    except CalledProcessError:
-                        self.logger.error('\nfailed to validate workshop items')
-                        return STATUS_FAILED
+            if status == STATUS_SUCCESS:
+                self.logger.info('downloading workshop items...')
+                with click.progressbar(self.config['workshop_items']) as bar:
+                    for workshop_item in bar:
+                        try:
+                            self.run_as_user(
+                                '{} +login anonymous +force_install_dir {} '
+                                '+workshop_download_item {} {} +quit'
+                                .format(
+                                    self.config['steamcmd_path'],
+                                    self.config['path'],
+                                    self.config['workshop_id'],
+                                    workshop_item,
+                                ),
+                            )
+                        except CalledProcessError:
+                            self.logger.error(
+                                '\nfailed to validate workshop items'
+                            )
+                            return STATUS_FAILED
 
-            if len(self.config['workshop_id']) == 0:
-                self.logger.warning('\nno workshop items selected for install')
-                return STATUS_PARTIAL_FAIL
-            else:
-                self.logger.success('\nvalidated workshop items')
-                return STATUS_SUCCESS
+                if len(self.config['workshop_id']) == 0:
+                    self.logger.warning(
+                        '\nno workshop items selected for install'
+                    )
+                    status = STATUS_PARTIAL_FAIL
+                else:
+                    self.logger.success('\nvalidated workshop items')
+                    status = STATUS_SUCCESS
+        return status

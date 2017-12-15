@@ -6,13 +6,14 @@ import zlib
 import click
 from gs_manager.decorators import multi_instance, single_instance
 from gs_manager.servers.base import STATUS_FAILED, STATUS_SUCCESS
-from gs_manager.servers.custom_rcon import CustomRcon
 from gs_manager.validators import validate_int_list, validate_key_value
+
+from ..generic import Rcon
 
 STEAM_DOWNLOAD_URL = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz'
 
 
-class Ark(CustomRcon):
+class Ark(Rcon):
     """
     Steam based gameserver with RCON support for ARK: Surivial Evolved.
     """
@@ -23,7 +24,7 @@ class Ark(CustomRcon):
 
     @staticmethod
     def defaults():
-        defaults = CustomRcon.defaults()
+        defaults = Rcon.defaults()
         defaults.update({
             'app_id': '376030',
             'workshop_id': '346110',
@@ -42,7 +43,7 @@ class Ark(CustomRcon):
 
     @staticmethod
     def excluded_from_save():
-        parent = CustomRcon.excluded_from_save()
+        parent = Rcon.excluded_from_save()
         return parent + [
             'say_command',
             'spawn_process',
@@ -319,11 +320,11 @@ class Ark(CustomRcon):
     @single_instance
     @click.command()
     @click.pass_obj
-    def validate(self, *args, **kwargs):
-        """ validates and update the ARK server """
+    def install(self, *args, **kwargs):
+        """ installs/validates/updates the ARK server """
 
         status = self.invoke(
-            super(Ark, self).validate
+            super(Ark, self).install
         )
 
         self.logger.debug('super status: {}'.format(status))
