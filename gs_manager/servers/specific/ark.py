@@ -82,20 +82,19 @@ class Ark(Rcon):
         self.logger.debug(ark_config)
         return ark_config
 
+    def _make_arg_string(self, args, prefix):
+        arg_string = ''
+        for key, value in args.items():
+            param = key
+            if value is not None:
+                param += '={}'.format(str(value).replace(' ', '\\ '))
+            arg_string += prefix + param
+        return arg_string
+
     def _make_command_args(self, ark_config):
         command_args = ark_config['map']
-
-        for key, value in ark_config['params'].items():
-            param = key
-            if value is not None:
-                param += '={}'.format(str(value).replace(' ', '\\ '))
-            command_args += '?{}'.format(param)
-
-        for key, value in ark_config['options'].items():
-            param = key
-            if value is not None:
-                param += '={}'.format(str(value).replace(' ', '\\ '))
-            command_args += ' -{}'.format(param)
+        command_args += self._make_arg_string(ark_config['params'], '?')
+        command_args += self._make_arg_string(ark_config['options'], ' -')
 
         self.logger.debug('command args: {}'.format(command_args))
         return command_args
@@ -171,6 +170,19 @@ class Ark(Rcon):
                     map_names.append(cur_map)
         return map_names
 
+    def _read_byte_string(self, f):
+        decoded = None
+        size = struct.unpack('i', f.read(4))[0]
+        flag = False
+        if size < 0:
+            flag = True
+            size -= 1
+
+        if not flag and size > 0:
+            raw = f.read(size)
+            decoded = raw[:-1].decode()
+        return decoded
+
     def _parse_meta_data(self, mod_meta_file):
         """
         parses an ARK modmeta.info file
@@ -182,27 +194,8 @@ class Ark(Rcon):
             total_pairs = struct.unpack('i', f.read(4))[0]
 
             for x in range(total_pairs):
-                key, value = None, None
-
-                key_bytes = struct.unpack('i', f.read(4))[0]
-                key_flag = False
-                if key_bytes < 0:
-                    key_flag = True
-                    key_bytes -= 1
-
-                if not key_flag and key_bytes > 0:
-                    raw = f.read(key_bytes)
-                    key = raw[:-1].decode()
-
-                value_bytes = struct.unpack('i', f.read(4))[0]
-                value_flag = False
-                if value_bytes < 0:
-                    value_flag = True
-                    value_bytes -= 1
-
-                if not value_flag and value_bytes > 0:
-                    raw = f.read(value_bytes)
-                    value = raw[:-1].decode()
+                key = self._read_byte_string(f)
+                value = self._read_byte_string(f)
 
                 if key and value:
                     meta_data[key] = value
@@ -246,6 +239,41 @@ class Ark(Rcon):
                     return True
 
         return False
+
+    def _extract_files(self, mod_dir):
+        for root, dirs, files in os.walk(mod_dir):
+            for filename in files:
+                if not filename.endswith('.z'):
+                    continue
+
+                file_path = os.path.join(root, filename)
+                to_extract_path = file_path[:-2]
+                size_file = '{}.uncompressed_size'.format(
+                    file_path)
+                size = None
+
+                if os.path.isfile(size_file):
+                    with open(size_file, 'r') as f:
+                        size = int(f.read().strip())
+                else:
+                    self.logger.debug(
+                        '{} does not exist'.format(size_file))
+                    return False
+
+                self.logger.debug(to_extract_path)
+                self.logger.debug(
+                    'extracting {}...'.format(filename))
+                self._z_unpack(file_path, to_extract_path)
+                u_size = os.stat(to_extract_path).st_size
+                self.logger.debug(
+                    '{}: {} {}'.format(filename, u_size, size))
+                if u_size == size:
+                    self.run_as_user(
+                        'rm {} {}'.format(
+                            file_path, size_file))
+                else:
+                    return False
+        return True
 
     @multi_instance
     @click.command()
@@ -427,37 +455,10 @@ class Ark(Rcon):
                         )
                         return STATUS_FAILED
 
-                    for root, dirs, files in os.walk(mod_dir):
-                        for filename in files:
-                            if filename.endswith('.z'):
-                                file_path = os.path.join(root, filename)
-                                to_extract_path = file_path[:-2]
-                                size_file = '{}.uncompressed_size'.format(
-                                    file_path)
-                                size = None
-
-                                if os.path.isfile(size_file):
-                                    with open(size_file, 'r') as f:
-                                        size = int(f.read().strip())
-                                else:
-                                    self.logger.debug(
-                                        '{} does not exist'.format(size_file))
-
-                                self.logger.debug(to_extract_path)
-                                self.logger.debug(
-                                    'extracting {}...'.format(filename))
-                                self._z_unpack(file_path, to_extract_path)
-                                u_size = os.stat(to_extract_path).st_size
-                                self.logger.debug(
-                                    '{}: {} {}'.format(filename, u_size, size))
-                                if u_size == size:
-                                    self.run_as_user(
-                                        'rm {} {}'.format(
-                                            file_path, size_file))
-                                else:
-                                    self.logger.error(
-                                        'could not validate {}'
-                                        .format(to_extract_path)
-                                    )
-                                    return STATUS_FAILED
+                    if not self._extract_files(mod_dir):
+                        self.logger.error(
+                            'could not validate {}'
+                            .format(to_extract_path)
+                        )
+                        return STATUS_FAILED
             self.logger.success('workshop items successfully installed')
