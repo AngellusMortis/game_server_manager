@@ -4,6 +4,7 @@ import click
 from gs_manager.decorators import multi_instance, single_instance
 from gs_manager.servers.base import STATUS_PARTIAL_FAIL
 from gs_manager.servers.custom_steam import CustomSteam
+from gs_manager.utils import get_param_obj
 from valve.rcon import RCON, shell
 
 
@@ -179,7 +180,7 @@ class CustomRcon(CustomSteam):
         if i_config['save_command'] is None:
             raise click.BadParameter(
                 'must provide a save command',
-                self.context, self._get_param_obj('save_command'))
+                self.context, get_param_obj(self.context, 'save_command'))
 
         return self.invoke(
             self.command,
@@ -203,7 +204,7 @@ class CustomRcon(CustomSteam):
         if i_config['say_command'] is None:
             raise click.BadParameter(
                 'must provide a say command format',
-                self.context, self._get_param_obj('say_command'))
+                self.context, get_param_obj(self.context, 'say_command'))
 
         return self.invoke(
             self.command,

@@ -8,6 +8,7 @@ import click_spinner
 from gs_manager.decorators import multi_instance, single_instance
 from gs_manager.servers.base import (STATUS_FAILED, STATUS_PARTIAL_FAIL,
                                      STATUS_SUCCESS, Base)
+from gs_manager.utils import get_param_obj
 from gs_manager.validators import validate_int_list
 from valve.source import NoResponseError
 from valve.source.a2s import ServerQuerier
@@ -197,7 +198,7 @@ class CustomSteam(Base):
         if self.config['app_id'] is None:
             raise click.BadParameter(
                 'must provide app_id of game',
-                self.context, self._get_param_obj('app_id'))
+                self.context, get_param_obj(self.context, 'app_id'))
 
         if self.is_running('@any'):
             self.logger.warning(
@@ -243,7 +244,7 @@ class CustomSteam(Base):
         if self.config['workshop_id'] is None:
             raise click.BadParameter(
                 'must provide workshop_id of game',
-                self.context, self._get_param_obj('workshop_id'))
+                self.context, get_param_obj(self.context, 'workshop_id'))
 
         if self.is_running('@any'):
             self.logger.warning(

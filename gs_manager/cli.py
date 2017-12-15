@@ -9,7 +9,8 @@ from functools import update_wrapper
 import click
 from gs_manager import servers
 from gs_manager.config import Config
-from gs_manager.utils import to_snake_case
+from gs_manager.logger import get_logger
+from gs_manager.utils import get_server_class, to_snake_case
 
 
 def get_types():
@@ -51,8 +52,8 @@ def main(context, *args, **kwargs):
     """ Console script for game_server_manager """
 
     config = Config(context)
-    logger = config.get_logger()
-    context.obj = config.get_server_class()(context, config)
+    logger = get_logger(config)
+    context.obj = get_server_class(config, context)(context, config)
 
     possible_commands = inspect.getmembers(context.obj)
     for command in possible_commands:

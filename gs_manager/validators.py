@@ -1,4 +1,5 @@
 import json
+import re
 
 import click
 
@@ -52,3 +53,14 @@ def validate_key_value(context, param, values):
             raise click.BadParameter(
                 'invalid server key-value pair', context, param)
     return return_dict
+
+
+def validate_string_value(context, param, value):
+    if len(param) > 0:
+        match = re.match('^[^|]+$', value, re.I)
+        if not match or not match.group() == value:
+            raise click.BadParameter(
+                'cannot contain a | character',
+                context,
+                param,
+            )

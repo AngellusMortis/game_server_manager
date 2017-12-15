@@ -7,7 +7,8 @@ import click
 import psutil
 from gs_manager.config import DEFAULT_SERVER_TYPE
 from gs_manager.decorators import multi_instance, single_instance
-from gs_manager.utils import run_as_user, write_as_user
+from gs_manager.logger import get_logger
+from gs_manager.utils import get_param_obj, run_as_user, write_as_user
 from gs_manager.validators import validate_instance_overrides
 
 try:
@@ -111,7 +112,7 @@ class Base(object):
 
         self.context = context
         self.config = config
-        self.logger = self.config.get_logger()
+        self.logger = get_logger(self.config)
         self.supports_multi_instance = supports_multi_instance
 
     def get_pid(self, instance_name=None):
@@ -153,14 +154,6 @@ class Base(object):
         with click.progressbar(length=seconds) as waiter:
             for item in waiter:
                 time.sleep(1)
-
-    def _get_param_obj(self, param_name):
-        param = None
-        for p in self.context.command.params:
-            if p.name == param_name:
-                param = p
-                break
-        return param
 
     def _prestop(self, seconds_to_stop, is_restart):
         if hasattr(self, 'say') and \
@@ -332,7 +325,7 @@ class Base(object):
         if self.config['command'] is None:
             raise click.BadParameter(
                 'must provide a start command',
-                self.context, self._get_param_obj('command'))
+                self.context, get_param_obj(self.context, 'command'))
 
         instance = self.config['current_instance']
         i_config = self.config.get_instance_config(instance)

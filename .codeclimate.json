@@ -1,0 +1,40 @@
+{
+    "version": "2",
+    "checks": {
+        "method-complexity": {
+            "enabled": false
+        }
+    },
+    "exclude_patterns": [
+        "versioneer.py",
+        "**/_version.py",
+        "config",
+        "db",
+        "dist",
+        "features",
+        "**/node_modules",
+        "script",
+        "**/spec",
+        "**/test",
+        "**/tests",
+        "**/vendor",
+        "**/*.d.ts"
+    ],
+    "plugins": {
+        "csslint": {
+            "enabled": true
+        },
+        "duplication": {
+            "enabled": true
+       },
+       "fixme": {
+            "enabled": true
+       },
+       "pep8": {
+            "enabled": true
+       },
+       "radon": {
+            "enabled": true
+       }
+    }
+}

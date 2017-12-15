@@ -4,6 +4,7 @@ from subprocess import CalledProcessError
 import click
 from gs_manager.decorators import multi_instance
 from gs_manager.servers.custom_screen import CustomScreen
+from gs_manager.utils import get_param_obj
 
 
 class Java(CustomScreen):
@@ -71,11 +72,11 @@ class Java(CustomScreen):
         if self.config['server_jar'] is None:
             raise click.BadParameter(
                 'must provide a server_jar',
-                self.context, self._get_param_obj('server_jar'))
+                self.context, get_param_obj(self.context, 'server_jar'))
         elif not os.path.isfile(self.config['server_jar']):
             raise click.BadParameter(
                 'cannot find server_jar: {}'.format(self.config['server_jar']),
-                self.context, self._get_param_obj('server_jar'))
+                self.context, get_param_obj(self.context, 'server_jar'))
         else:
             try:
                 self.run_as_user('which {}'.format(self.config['java_path']))
@@ -83,7 +84,7 @@ class Java(CustomScreen):
                 raise click.BadParameter(
                     'cannot find java executable: {}'
                     .format(self.config['java_path']),
-                    self.context, self._get_param_obj('java_path')
+                    self.context, get_param_obj(self.context, 'java_path')
                 )
             else:
                 self.logger.debug('found java')

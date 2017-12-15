@@ -1,14 +1,14 @@
 import copy
 import json
-import logging
 import os
-import re
 from subprocess import CalledProcessError
 
 import click
-from gs_manager import servers
-from gs_manager.logger import ClickLogger
-from gs_manager.utils import run_as_user, to_pascal_case, write_as_user
+from gs_manager.logger import get_logger
+from gs_manager.utils import get_param_obj, get_server_class, write_as_user
+from gs_manager.validators import validate_string_value
+
+from .dict_config import DictConfig
 
 try:
     from json import JSONDecodeError as JSONError
@@ -18,7 +18,7 @@ except ImportError:
 DEFAULT_SERVER_TYPE = 'base'
 
 
-class Config(object):
+class Config(DictConfig):
 
     _context = None
     _filename = '.gs_config.json'
@@ -52,76 +52,31 @@ class Config(object):
 
         self._validate_config()
 
-    def __len__(self):
-        self._set_final_config()
-        return self._final_config.__len__()
-
-    def __length_hint__(self):
-        self._set_final_config()
-        if hasattr(self._final_config, '__length_hint__'):
-            return self._final_config.__length_hint__()
-        return None
-
-    def __getitem__(self, key):
-        self._set_final_config()
-        return self._final_config.__getitem__(key)
-
-    def __missing__(self, key):
-        self._set_final_config()
-        return self._final_config.__missing__(key)
-
-    def __setitem__(self, key, value):
-        self._set_final_config()
-        return self._final_config.__setitem__(key, value)
-
-    def __delitem__(self, key):
-        self._set_final_config()
-        return self._final_config.__delitem__(key)
-
-    def __iter__(self):
-        self._set_final_config()
-        return self._final_config.__iter__()
-
-    def __reversed__(self):
-        self._set_final_config()
-        return self._final_config.__reversed__()
-
-    def __contains__(self, item):
-        self._set_final_config()
-        return self._final_config.__contains__(item)
-
-    def items(self):
-        self._set_final_config()
-        return self._final_config.items()
-
-    def keys(self):
-        self._set_final_config()
-        return self._final_config.keys()
-
-    def values(self):
-        self._set_final_config()
-        return self._final_config.values()
-
-    def _make_final_config(self, instance_name=None):
-        config = self._default_config.copy()
-        config.update(self._file_config)
-        config.update(self._global_cli_config)
-
+    def _add_instance(self, config, instance_name):
         if instance_name is not None:
-            instance_config = self['instance_overrides'].get(instance_name)
-            if instance_config is not None:
-                for key, value in list(instance_config.items()):
+            instance = self['instance_overrides'].get(instance_name)
+            if instance is not None:
+                for key, value in list(instance.items()):
                     if isinstance(value, dict):
                         config[key].update(value)
-                        del instance_config[key]
-                config.update(instance_config)
+                        del instance[key]
+                config.update(instance)
 
+    def _add_cli_config(self, config):
         cli_config = self._cli_config.copy()
         if 'instance_overrides' in cli_config:
             config['instance_overrides'].update(
                 cli_config['instance_overrides'])
             del cli_config['instance_overrides']
         config.update(cli_config)
+
+    def _make_final_config(self, instance_name=None):
+        config = self._default_config.copy()
+        config.update(self._file_config)
+        config.update(self._global_cli_config)
+
+        self._add_instance(config, instance_name)
+        self._add_cli_config(config)
 
         if instance_name is not None:
             config['current_instance'] = instance_name
@@ -144,17 +99,9 @@ class Config(object):
             self._final_config = self._make_final_config()
 
             if 'user' in self._final_config:
-                logger = self.get_logger()
+                logger = get_logger(self)
                 logger.debug('config: ')
                 logger.debug(self._final_config)
-
-    def _get_param_obj(self, param_name):
-        param = None
-        for p in self._context.command.params:
-            if p.name == param_name:
-                param = p
-                break
-        return param
 
     def _get_config_path(self):
         path = self._context.params.get('path') or \
@@ -167,7 +114,7 @@ class Config(object):
             else:
                 raise click.BadParameter(
                     'path does not exist', self._context,
-                    self._get_param_obj('path'))
+                    get_param_obj(self._context, 'path'))
         else:
             path = self._find_config_path()
 
@@ -204,22 +151,25 @@ class Config(object):
         except JSONError:
             raise click.BadParameter(
                 'invalid configuration file: {}'.format(config_path),
-                self._context, self._get_param_obj('config'))
+                self._context, get_param_obj(self._context, 'config'))
 
         return config
+
+    def _is_empty_option(self, param):
+        return param is None or \
+            param is False or \
+            (hasattr(param, '__iter__') and len(param) > 0)
 
     def _get_cli_config(self, params):
         config = {}
 
         for key in params:
-            if params[key] is not None and params[key] is not False and \
-                    not (hasattr(params[key], '__iter__') and
-                         len(params[key]) == 0):
+            if not self._is_empty_option(params[key]):
                 config[key] = params[key]
         return config
 
     def _get_default_config(self, server_type=None):
-        return self.get_server_class().defaults()
+        return get_server_class(self, self._context).defaults()
 
     def _read_config_file(self, config_path):
         config_json = '{}'
@@ -230,92 +180,54 @@ class Config(object):
 
         return config_json
 
-    def get_logger(self):
-        logging.setLoggerClass(ClickLogger)
-        logger = logging.getLogger('gs_manager')
-
-        if not logger.hasHandlers():
-            logger.setLevel(logging.DEBUG)
-            log_dir = os.path.join(self['path'], 'logs')
-            if not os.path.isdir(log_dir):
-                run_as_user(self['user'], 'mkdir {}'.format(log_dir))
-
-            log_path = os.path.join(log_dir, 'gs_manager.log')
-            log_file = None
-
-            try:
-                log_file = open(log_path, 'a')
-            except PermissionError:
-                log_file = open(os.devnull, 'w')
-
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
-            handler = logging.StreamHandler(log_file)
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-            logger.propagate = False
-            logger.click_debug = self['debug']
-        return logger
-
-    def get_server_class(self, server_type=None):
-        if server_type is None:
-            server_type = self['type']
-
-        try:
-            server = getattr(servers, to_pascal_case(server_type))
-        except AttributeError:
-            raise click.BadParameter(
-                'server of type "{}" does not exist'.format(server_type),
-                self._context, self._get_param_obj('type'))
-        else:
-            return server
-
     def _validate_config(self):
         for key, value in self.items():
             if isinstance(value, str):
-                self._validate_string_param(key, value)
+                validate_string_value(
+                    self._context,
+                    get_param_obj(self._context, key),
+                    value,
+                )
 
-    def _validate_string_param(self, name, param):
-        if len(param) > 0:
-            match = re.match('^[^|]+$', param, re.I)
-            if not match or not match.group() == param:
-                raise click.BadParameter(
-                    '{} cannot contain a | character'.format(name),
-                    self._context, self._get_param_obj(name))
-
-    def save(self):
-        self._set_final_config()
-        config_copy = copy.deepcopy(self._final_config)
-        logger = self.get_logger()
-
-        # add default values to config
+    def _add_default_keys(self, config):
+        logger = get_logger(self)
         for key, value in self._default_config.items():
-            if key not in config_copy:
+            if key not in config:
                 logger.debug('adding default value for key: {}'.format(key))
-                config_copy[key] = value
+                config[key] = value
 
-        # do not save exclusions
-        server_class = self.get_server_class()
+    def _delete_excluded_keys(self, config):
+        logger = get_logger(self)
+        server_class = get_server_class(self, self._context)
         for key in server_class.excluded_from_save():
-            if key in config_copy:
+            if key in config:
                 logger.debug('removing excluded saved key: {}'.format(key))
-                del config_copy[key]
+                del config[key]
 
         if not server_class.supports_multi_instance:
             logger.debug('removing instance_overrides')
-            del config_copy['instance_overrides']
+            del config['instance_overrides']
+
+    def save(self):
+        self._set_final_config()
+        config = copy.deepcopy(self._final_config)
+        logger = get_logger(self)
+
+        self._add_default_keys(config)
+        self._delete_excluded_keys(config)
 
         logger.debug('saved config:')
-        logger.debug(config_copy)
+        logger.debug(config)
 
         config_json = json.dumps(
-            config_copy, sort_keys=True, indent=4, separators=(',', ': '))
+            config, sort_keys=True,
+            indent=4, separators=(',', ': '),
+        )
 
         config_path = os.path.join(self._path, self._filename)
         try:
             write_as_user(self['user'], config_path, config_json)
-        except CalledProcessError as ex:
+        except CalledProcessError:
             raise click.ClickException(
                 'could not save config file (perhaps bad user?)')
 

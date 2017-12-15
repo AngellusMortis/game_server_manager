@@ -5,6 +5,7 @@ import click
 import psutil
 from gs_manager.decorators import multi_instance, single_instance
 from gs_manager.servers.base import Base
+from gs_manager.utils import get_param_obj
 
 
 class CustomScreen(Base):
@@ -164,7 +165,7 @@ class CustomScreen(Base):
         if i_config['save_command'] is None:
             raise click.BadParameter(
                 'must provide a save command',
-                self.context, self._get_param_obj('save_command'))
+                self.context, get_param_obj(self.context, 'save_command'))
 
         return self.invoke(
             self.command,
@@ -185,7 +186,7 @@ class CustomScreen(Base):
         if self.config['say_command'] is None:
             raise click.BadParameter(
                 'must provide a say command format',
-                self.context, self._get_param_obj('say_command'))
+                self.context, get_param_obj(self.context, 'say_command'))
 
         return self.invoke(
             self.command,

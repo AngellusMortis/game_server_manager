@@ -8,9 +8,9 @@ import shlex
 import subprocess
 import sys
 
-import requests
-
 import click
+import requests
+from gs_manager import servers
 
 SUDO_FORMAT = 'sudo su - {} -c "{}"'
 
@@ -24,7 +24,7 @@ def to_snake_case(name):
 
 
 def _create_pipeline(args, previous_process=None,
-                    redirect_output=True, **kwargs):
+                     redirect_output=True, **kwargs):
     processes = []
     split_index = args.index('|')
     args1 = args[:split_index]
@@ -169,3 +169,26 @@ def surpress_stdout():
     sys.stdout = io.StringIO()
     yield
     sys.stdout = save_stdout
+
+
+def get_param_obj(context, name):
+    param = None
+    for p in context.command.params:
+        if p.name == name:
+            param = p
+            break
+    return param
+
+
+def get_server_class(config, context, server_type=None):
+    if server_type is None:
+        server_type = config['type']
+
+    try:
+        server = getattr(servers, to_pascal_case(server_type))
+    except AttributeError:
+        raise click.BadParameter(
+            'server of type "{}" does not exist'.format(server_type),
+            context, get_param_obj(context, 'type'))
+    else:
+        return server

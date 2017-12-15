@@ -7,7 +7,7 @@ import click
 import click_spinner
 from gs_manager.decorators import multi_instance, single_instance
 from gs_manager.servers.java import Java
-from gs_manager.utils import download_file, get_json
+from gs_manager.utils import download_file, get_json, get_param_obj
 from mcstatus import MinecraftServer
 from pygtail import Pygtail
 
@@ -405,7 +405,9 @@ class Minecraft(Java):
         elif minecraft_version not in versions:
             raise click.BadParameter(
                 'could not find minecraft version',
-                self.context, self._get_param_obj('minecraft_version'))
+                self.context,
+                get_param_obj(self.context, 'minecraft_version'),
+            )
 
         self.logger.debug('minecraft version:')
         self.logger.debug(versions[minecraft_version])
@@ -422,7 +424,7 @@ class Minecraft(Java):
                         'minecraft v{} already installed'
                         .format(minecraft_version),
                         self.context,
-                        self._get_param_obj('minecraft_version')
+                        get_param_obj(self.context, 'minecraft_version')
                     )
         else:
             os.makedirs(jar_dir)
@@ -475,7 +477,7 @@ class Minecraft(Java):
                     'minecraft v{} already enabled'
                     .format(minecraft_version),
                     self.context,
-                    self._get_param_obj('minecraft_version')
+                    get_param_obj(self.context, 'minecraft_version')
                 )
             self.run_as_user('rm {}'.format(link_path))
 
