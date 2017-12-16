@@ -49,18 +49,13 @@ Requirements
 * POSIX Complient System - built and tested on Arch Linux, but should work on any Linux, MAC OSX or Windows Subsystem for Linux version
         * Uses and requires the following commands::
 
-                chown
                 grep
                 java # optional for Java based servers
                 ln
-                ls
-                mkdir
                 nohup
                 ps
-                rm
                 screen # optional for screen based servers
                 steamcmd # optional for Steam based servers
-                sudo
                 vim # or whatever your default $EDITOR command is
                 which
 
