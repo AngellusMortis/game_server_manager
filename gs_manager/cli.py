@@ -12,7 +12,7 @@ from functools import update_wrapper
 import click
 import shlex
 from gs_manager import servers
-from gs_manager.config import Config
+from gs_manager.config import Config, DEFAULT_SERVER_TYPE
 from gs_manager.logger import get_logger
 from gs_manager.utils import get_server_class, to_snake_case
 
@@ -50,7 +50,8 @@ def check_relaunch(config):
               help=('Save config to JSON file after loading'))
 @click.option('-t', '--type',
               type=click.Choice(get_types()),
-              help='Type of gameserver to run')
+              help='Type of gameserver to run. Defaults to '
+                   '{}'.format(DEFAULT_SERVER_TYPE))
 @click.option('-d', '--debug',
               is_flag=True,
               help='Show extra debug information')
@@ -59,7 +60,7 @@ def check_relaunch(config):
               help='Shows this message and exit')
 @click.option('-u', '--user',
               type=str,
-              help='User to run gameserver as')
+              help='User to run gameserver as. Defaults to current user')
 @click.pass_context
 def main(context, *args, **kwargs):
     """ Console script for game_server_manager """

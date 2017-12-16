@@ -373,11 +373,13 @@ class Ark(Rcon):
 
             if not os.path.isfile(steamcmd_path):
                 self.logger.info('installing Steam locally for ARK...')
+                old_path = os.getcwd()
+                os.chdir(steamcmd_dir)
                 filename = download_file(STEAM_DOWNLOAD_URL)
-                self.run_command(
-                    'tar -xf {}'.format(filename), cwd=steamcmd_dir)
+                self.run_command('tar -xf {}'.format(filename))
                 os.remove(os.path.join(steamcmd_dir, filename))
                 self.run_command('{} +quit'.format(steamcmd_path))
+                os.chdir(old_path)
                 self.logger.success('Steam installed successfully')
         return status
 

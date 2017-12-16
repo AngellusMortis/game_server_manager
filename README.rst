@@ -107,6 +107,15 @@ Generic
 Minecraft
 ~~~~~~~~~
 
+Existing Install
+****************
+
+If you already have an existing install, it is simple to set up `gs` to run with it::
+
+    gs -t minecraft -s status
+
+This will generate a default `.gs_config.json` file. Edit this to match your existing install.
+
 Java
 ****
 
@@ -135,6 +144,15 @@ See `gs -t minecraft install --help` for more details.
 
 ARK
 ~~~
+
+Existing Install
+****************
+
+If you already have an existing install, it is simple to set up `gs` to run with it::
+
+    gs -t ark -s status
+
+This will generate a default `.gs_config.json` file. Edit this to match your existing install.
 
 SteamCMD
 ********
@@ -172,6 +190,20 @@ See `gs -t ark install --help` for more details.
 
 .. _Source RCON protocol: https://developer.valvesoftware.com/wiki/Source_RCON_Protocol
 
+Multiple Instances
+******************
+
+It is common to run multiple ARK servers together as a cluster. To do this, you want to use the `instance_overrides` config option. Example `.gs_config.json`_
+
+.. _.gs_config.json: https://gist.github.com/AngellusMortis/9547ae3f8be88768fa362157972983a9
+
+You can run subcommands against all instances at once with `-ci @all`. You can even run them all in parellel (get for starting and stopping) with `-p`::
+
+    gs start -ci @all -p
+    gs status -ci @all
+    gs stop -ci @all -p
+
+
 Planned
 -------
 
@@ -179,6 +211,7 @@ Stuff planned before the 1.0 release:
 
 * Full Unit Test and code coverage (Python 2.7, 3.4+ support)
 * Documentation
+* Forge and Curse support for Minecraft servers
 * Backup command for all servers
 * Staging support to update servers while still running
 * Probably more stuff and maybe more server types
@@ -190,4 +223,3 @@ This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypack
 
 .. _Cookiecutter: https://github.com/audreyr/cookiecutter
 .. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
-
