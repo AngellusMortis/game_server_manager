@@ -32,7 +32,7 @@ setup(
     name='game_server_manager',
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
-    description="Simple command to manage and control various types of game servers.",
+    description="Command to manage and control various types of game servers.",
     long_description=readme + '\n\n' + history,
     author="Christopher Bailey",
     author_email='cbailey@mort.is',
