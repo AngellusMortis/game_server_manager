@@ -4,7 +4,7 @@
 #
 #    pip-compile --output-file requirements.txt requirements.in
 #
--e git+ssh://git@github.com/AngellusMortis/python-valve.git@f07f079#egg=python-valve
+-e git+https://github.com/AngellusMortis/python-valve.git@f07f079#egg=python-valve
 argh==0.26.2              # via watchdog
 certifi==2017.11.5        # via requests
 chardet==3.0.4            # via requests
@@ -17,7 +17,7 @@ idna==2.6                 # via requests
 mcstatus==2.2
 monotonic==1.4
 pathtools==0.1.2          # via watchdog
-psutil==5.4.1
+psutil==5.4.2
 pygtail==0.7.0
 pyyaml==3.12              # via watchdog
 requests==2.18.4
