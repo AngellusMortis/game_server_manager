@@ -4,18 +4,36 @@ Game Server Manager
 
 
 .. image:: https://img.shields.io/pypi/v/game_server_manager.svg
-        :target: https://pypi.python.org/pypi/game_server_manager
+    :target: https://pypi.python.org/pypi/game_server_manager
+    :alt: PyPi
+
+.. image:: https://img.shields.io/pypi/pyversions/game_server_manager.svg
+    :target: https://pypi.python.org/pypi/game_server_manager
+    :alt: Python Versions
 
 .. image:: https://img.shields.io/travis/AngellusMortis/game_server_manager.svg
-        :target: https://travis-ci.org/AngellusMortis/game_server_manager
+    :target: https://travis-ci.org/AngellusMortis/game_server_manager
+    :alt: Travis CI
 
 .. image:: https://readthedocs.org/projects/game-server-manager/badge/?version=latest
-        :target: https://game-server-manager.readthedocs.io/en/latest/?badge=latest
-        :alt: Documentation Status
+    :target: https://game-server-manager.readthedocs.io/en/latest/?badge=latest
+    :alt: Documentation
 
 .. image:: https://pyup.io/repos/github/AngellusMortis/game_server_manager/shield.svg
-     :target: https://pyup.io/repos/github/AngellusMortis/game_server_manager/
-     :alt: Updates
+    :target: https://pyup.io/repos/github/AngellusMortis/game_server_manager/
+    :alt: Updates
+
+.. image:: https://coveralls.io/repos/github/AngellusMortis/game_server_manager/badge.svg?branch=master
+    :target: https://coveralls.io/github/AngellusMortis/game_server_manager?branch=master
+    :alt: Coverage
+
+.. image:: https://api.codeclimate.com/v1/badges/982bb673e87f58dac7d1/maintainability
+   :target: https://codeclimate.com/github/AngellusMortis/game_server_manager/maintainability
+   :alt: Maintainability
+
+.. image:: https://api.codeclimate.com/v1/badges/982bb673e87f58dac7d1/test_coverage
+   :target: https://codeclimate.com/github/AngellusMortis/game_server_manager/test_coverage
+   :alt: Test Coverage
 
 
 Command to manage and control various types of game servers.
