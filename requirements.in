@@ -1,7 +1,7 @@
+-e git+ssh://git@github.com/AngellusMortis/python-valve.git@f07f079#egg=python-valve # requires a change that has not been merged into upstream yet
 click
 click-spinner
 mcstatus
-pygtail
 psutil
+pygtail
 watchdog
--e git+ssh://git@github.com/AngellusMortis/python-valve.git@f07f079#egg=python-valve # requires a change that has not been merged into upstream yet

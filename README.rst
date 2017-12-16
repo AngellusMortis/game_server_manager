@@ -18,7 +18,7 @@ Game Server Manager
      :alt: Updates
 
 
-Simple command to manage and control various types of game servers.
+Command to manage and control various types of game servers.
 
 
 * Free software: MIT license
@@ -29,8 +29,24 @@ Requirements
 ------------
 
 * POSIX Complient System - built and tested on Arch Linux, but should work on any Linux, MAC OSX or Windows Subsystem for Linux version
-        * Uses and requires `sudo`, `rm`, `mkdir`, `ps`, `ln`, `ls`, `chown`, `vim`, and optionally `screen` (for screen based servers), `java` (for Java based servers) and `steamcmd` (for Steam based servers)
-* Python - built and tested with 3.6, but for full 1.0 release, unit tests will suppport 2.7 and 3.4+
+        * Uses and requires the following commands::
+
+                chown
+                grep
+                java # optional for Java based servers
+                ln
+                ls
+                mkdir
+                nohup
+                ps
+                rm
+                screen # optional for screen based servers
+                steamcmd # optional for Steam based servers
+                sudo
+                vim # or whatever your default $EDITOR command is
+                which
+
+* Python - built and tested with 3.6, but for full 1.0 release, unit tests will suppport 2.7 and 3.4+ unless there is a compelling reason not to
 
 Features
 --------
@@ -54,9 +70,9 @@ Gameservers for specific games
 Quickstart
 ----------
 
-Full 1.0 release will be in PyPi, but until then, it will likely only exist in github::
+Install from pip::
 
-        sudo pip install -e -e git+ssh://git@github.com/AngellusMortis/game_server_manager.git@master@egg=game_server_manager
+        sudo pip install game_server_manager
         gs --help
 
 `gs` will attempt to use `.gs_config.json` as the main configuration file. If this does not exist, you must provide all configuration options via command line. `-t` will speciify type of gameserver and `-s` will save a `.gs_config.json` file based on your commandline parameters.
