@@ -14,7 +14,7 @@ class Rcon(Steam):
     Requires additional configuration to work.
 
     .. _Source RCON protocol: https://developer.valvesoftware.com/wiki/Source_RCON_Protocol
-    """
+    """  # noqa
 
     @staticmethod
     def defaults():
@@ -214,7 +214,7 @@ class Rcon(Steam):
         """
         creates RCON shell.
         Shell docs: https://python-valve.readthedocs.io/en/latest/rcon.html#using-the-rcon-shell
-        """
+        """  # noqa
 
         if self.is_running(self.config['current_instance']):
             args = self._get_rcon_args(self.config['current_instance'])

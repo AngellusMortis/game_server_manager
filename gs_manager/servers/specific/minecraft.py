@@ -1,7 +1,6 @@
 import os
 import re
 import time
-from socket import timeout
 
 import click
 import click_spinner

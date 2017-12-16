@@ -10,7 +10,7 @@ from gs_manager.validators import validate_int_list, validate_key_value
 
 from ..generic import Rcon
 
-STEAM_DOWNLOAD_URL = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz'
+STEAM_DOWNLOAD_URL = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz'  # noqa
 
 
 class Ark(Rcon):
@@ -104,7 +104,7 @@ class Ark(Rcon):
         unpacks .z files downloaded from Steam workshop
 
         adapted from https://github.com/TheCherry/ark-server-manager/blob/master/src/z_unpack.py
-        """
+        """  # noqa
         with open(from_path, 'rb') as f_from:
             with open(to_path, 'wb') as f_to:
                 f_from.read(8)
@@ -129,7 +129,7 @@ class Ark(Rcon):
         reads a UE4 string from a file object
 
         adapted from https://github.com/barrycarey/Ark_Mod_Downloader/blob/master/Ark_Mod_Downloader.py
-        """
+        """  # noqa
         count = struct.unpack('i', file_obj.read(4))[0]
         flag = False
         if count < 0:
@@ -146,7 +146,7 @@ class Ark(Rcon):
         writes a UE4 string to a file object
 
         adapted from https://github.com/barrycarey/Ark_Mod_Downloader/blob/master/Ark_Mod_Downloader.py
-        """
+        """  # noqa
         string_length = len(string_to_write) + 1
         file_obj.write(struct.pack('i', string_length))
         barray = bytearray(string_to_write, "utf-8")
@@ -158,7 +158,7 @@ class Ark(Rcon):
         parses an ARK mod.info file
 
         adapted from https://github.com/barrycarey/Ark_Mod_Downloader/blob/master/Ark_Mod_Downloader.py
-        """
+        """  # noqa
         map_names = []
         with open(mod_info_file, 'rb') as f:
             self._read_ue4_string(f)
@@ -188,7 +188,7 @@ class Ark(Rcon):
         parses an ARK modmeta.info file
 
         adapted from https://github.com/barrycarey/Ark_Mod_Downloader/blob/master/Ark_Mod_Downloader.py
-        """
+        """  # noqa
         meta_data = {}
         with open(mod_meta_file, 'rb') as f:
             total_pairs = struct.unpack('i', f.read(4))[0]

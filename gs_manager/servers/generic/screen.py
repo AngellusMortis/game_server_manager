@@ -1,4 +1,3 @@
-import re
 from subprocess import CalledProcessError
 
 import click
