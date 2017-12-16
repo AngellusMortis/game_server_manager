@@ -124,13 +124,13 @@ def test_run_as_user_bad_return():
     user = getpass.getuser()
 
     with pytest.raises(subprocess.CalledProcessError):
-        run_as_user(user, 'test')
+        run_as_user(user, 'false')
 
 
 def test_run_as_user_return_process():
     user = getpass.getuser()
 
-    process = run_as_user(user, 'test', return_process=True)
+    process = run_as_user(user, 'false', return_process=True)
 
     assert process.returncode != 0
 

@@ -10,7 +10,6 @@ import sys
 
 import click
 import requests
-from gs_manager import servers
 
 SUDO_FORMAT = 'sudo su - {} -c "{}"'
 
@@ -181,6 +180,8 @@ def get_param_obj(context, name):
 
 
 def get_server_class(config, context, server_type=None):
+    from gs_manager import servers
+
     if server_type is None:
         server_type = config['type']
 
