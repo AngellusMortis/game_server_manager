@@ -37,7 +37,7 @@ class Screen(Base):
 
     def _clear_screens(self):
         try:
-            self.run_as_user('screen -wipe')
+            self.run_command('screen -wipe')
         except CalledProcessError:
             pass
 
@@ -137,7 +137,7 @@ class Screen(Base):
 
             command_string = "screen -p 0 -S {} -X eval 'stuff \"{}\"\015'" \
                 .format(self.config['name'], command_string)
-            output = self.run_as_user(command_string)
+            output = self.run_command(command_string)
 
             if do_print:
                 self.logger.info(output)
@@ -194,7 +194,7 @@ class Screen(Base):
         """ attachs to gameserver screen to give shell access """
 
         if self.is_running(self.config['current_instance']):
-            self.run_as_user('screen -x {}'.format(self.config['name']))
+            self.run_command('screen -x {}'.format(self.config['name']))
         else:
             raise click.ClickException('{} is not running'
                                        .format(self.config['name']))

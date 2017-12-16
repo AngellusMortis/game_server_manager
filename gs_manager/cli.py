@@ -3,10 +3,14 @@
 
 """Console script for game_server_manager."""
 
+import getpass
 import inspect
+import os
+import sys
 from functools import update_wrapper
 
 import click
+import shlex
 from gs_manager import servers
 from gs_manager.config import Config
 from gs_manager.logger import get_logger
@@ -19,6 +23,15 @@ def get_types():
     for server in server_classes:
         types.append(to_snake_case(server[0]))
     return types
+
+
+def check_relaunch(config):
+    current_user = getpass.getuser()
+    if current_user != config['user']:
+        sys.argv[0] = os.path.abspath(sys.argv[0])
+        command = ' '.join(sys.argv)
+        args = shlex.split('sudo su {} -c "{}"'.format(config['user'], command))
+        os.execvp('sudo', args)
 
 
 @click.group(chain=True, invoke_without_command=True, add_help_option=False)
@@ -52,6 +65,7 @@ def main(context, *args, **kwargs):
     """ Console script for game_server_manager """
 
     config = Config(context)
+    check_relaunch(config)
     logger = get_logger(config)
     context.obj = get_server_class(config, context)(context, config)
 

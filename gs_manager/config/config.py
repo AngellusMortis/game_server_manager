@@ -5,7 +5,7 @@ from subprocess import CalledProcessError
 
 import click
 from gs_manager.logger import get_logger
-from gs_manager.utils import get_param_obj, get_server_class, write_as_user
+from gs_manager.utils import get_param_obj, get_server_class
 from gs_manager.validators import validate_string_value
 
 from .dict_config import DictConfig
@@ -225,11 +225,8 @@ class Config(DictConfig):
         )
 
         config_path = os.path.join(self._path, self._filename)
-        try:
-            write_as_user(self['user'], config_path, config_json)
-        except CalledProcessError:
-            raise click.ClickException(
-                'could not save config file (perhaps bad user?)')
+        with open(config_path, 'w') as f:
+            f.write(config_json)
 
     def set_cli_config(self, config):
         self._final_config = None

@@ -3,7 +3,6 @@ import os
 import pprint
 
 import click
-from gs_manager.utils import run_as_user
 
 
 def get_logger(config):
@@ -14,7 +13,7 @@ def get_logger(config):
             logger.setLevel(logging.DEBUG)
             log_dir = os.path.join(config['path'], 'logs')
             if not os.path.isdir(log_dir):
-                run_as_user(config['user'], 'mkdir {}'.format(log_dir))
+                os.mkdir(log_dir)
 
             log_path = os.path.join(log_dir, 'gs_manager.log')
             log_file = None

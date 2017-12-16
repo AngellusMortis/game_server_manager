@@ -1,3 +1,4 @@
+import os
 import signal
 
 import click
@@ -121,12 +122,7 @@ class Rcon(Steam):
         else:
             pid = self.get_pid(self.config['current_instance'])
             if pid is not None:
-                self.run_as_user(
-                    'kill -{} {}'.format(
-                        signal.SIGINT,
-                        pid
-                    )
-                )
+                os.kill(pid, signal.SIGINT)
 
     @multi_instance
     @click.command()

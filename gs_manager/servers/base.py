@@ -1,3 +1,4 @@
+import getpass
 import os
 import signal
 import time
@@ -8,7 +9,7 @@ import psutil
 from gs_manager.config import DEFAULT_SERVER_TYPE
 from gs_manager.decorators import multi_instance, single_instance
 from gs_manager.logger import get_logger
-from gs_manager.utils import get_param_obj, run_as_user, write_as_user
+from gs_manager.utils import get_param_obj, run_command
 from gs_manager.validators import validate_instance_overrides
 
 try:
@@ -43,7 +44,7 @@ class Base(object):
             'parallel': False,
             'spawn_process': False,
             'type': DEFAULT_SERVER_TYPE,
-            'user': 'root',
+            'user': getpass.getuser(),
         }
 
     @staticmethod
@@ -143,13 +144,14 @@ class Base(object):
         if pid is not None:
             pid_file = os.path.join(
                 self.config['path'], self._get_pid_filename(instance_name))
-            self.write_as_user(pid_file, str(pid))
+            with open(pid_file, 'w') as f:
+                f.write(str(pid))
 
     def _delete_pid_file(self, instance_name=None):
         pid_file = os.path.join(
             self.config['path'], self._get_pid_filename(instance_name))
         if os.path.isfile(pid_file):
-            self.run_as_user('rm {}'.format(pid_file))
+            os.remove(pid_file)
 
     def _progressbar(self, seconds):
         with click.progressbar(length=seconds) as waiter:
@@ -199,12 +201,7 @@ class Base(object):
             if pid is None:
                 pid = self.get_pid(self.config['current_instance'])
             if pid is not None:
-                self.run_as_user(
-                    'kill -{} {}'.format(
-                        signal.SIGINT,
-                        pid
-                    )
-                )
+                os.kill(pid, signal.SIGINT)
 
     def _startup_check(self, instance_name=None):
         self.logger.info('')
@@ -234,7 +231,7 @@ class Base(object):
 
     def _require_command(self, command, param):
         try:
-            self.run_as_user('which {}'.format(command))
+            self.run_command('which {}'.format(command))
         except CalledProcessError:
             raise click.BadParameter(
                 'cannot find {} executable: {}'
@@ -269,13 +266,13 @@ class Base(object):
             kwargs['current_instance'] = self.config['current_instance']
         return self.context.invoke(method, *args, **kwargs)
 
-    def run_as_user(self, command, **kwargs):
-        """ runs command as configurated user """
+    def run_command(self, command, **kwargs):
+        """ runs command with debug logging """
 
-        self.logger.debug('run command @{}: \'{}\''
+        self.logger.debug('run command: \'{}\''
                           .format(self.config['user'], command))
         try:
-            output = run_as_user(self.config['user'], command, **kwargs)
+            output = run_command(command, **kwargs)
         except Exception as ex:
             self.logger.debug('command exception: {}:{}'.format(type(ex), ex))
             raise ex
@@ -284,23 +281,12 @@ class Base(object):
 
         return output
 
-    def write_as_user(self, path, file_string):
-        self.logger.debug('write file @{}: \'{}\''
-                          .format(self.config['user'], path))
-
-        write_as_user(self.config['user'], path, file_string)
-
     def kill_server(self, instance_name=None):
         """ forcibly kills server process """
 
         pid = self.get_pid(instance_name)
         if pid is not None:
-            self.run_as_user(
-                'kill -{} {}'.format(
-                    signal.SIGKILL,
-                    pid
-                )
-            )
+            os.kill(pid, signal.SIGKILL)
 
     @multi_instance
     @click.command()
@@ -395,7 +381,7 @@ class Base(object):
                     'redirect_output': False,
                 }
 
-            response = self.run_as_user(
+            response = self.run_command(
                 command,
                 cwd=i_config['path'],
                 **popen_kwargs,
@@ -403,7 +389,7 @@ class Base(object):
 
             if not self.config['foreground']:
                 if i_config['spawn_process']:
-                    self.run_as_user(
+                    self.run_command(
                         'cat > {}'.format(log_file_path),
                         return_process=True,
                         redirect_output=False,
@@ -416,7 +402,7 @@ class Base(object):
                     .replace('?', '\\?') \
                     .replace('+', '\\+') \
                     .strip()
-                pids = self.run_as_user(
+                pids = self.run_command(
                     'ps -ef --sort=start_time | '
                     'grep -i -P "(?<!grep -i |-c ){}$" | awk \'{{print $2}}\''
                     .format(command)
@@ -424,7 +410,7 @@ class Base(object):
 
                 for pid in pids:
                     if pid is not None and not pid == '':
-                        self.run_as_user('ps -ef | grep {}'.format(pid))
+                        self.run_command('ps -ef | grep {}'.format(pid))
 
                 if pids[0] is None and not pids[0] == '':
                     raise click.ClickException('could not determine PID')
@@ -539,7 +525,7 @@ class Base(object):
         file_path = os.path.join(self.config['path'], edit_path)
         editor = os.environ.get('EDITOR') or 'vim'
 
-        self.run_as_user(
+        self.run_command(
             '{} {}'.format(editor, file_path),
             redirect_output=False,
         )

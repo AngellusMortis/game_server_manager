@@ -7,6 +7,7 @@ import click
 from gs_manager.decorators import multi_instance, single_instance
 from gs_manager.servers.base import STATUS_FAILED, STATUS_SUCCESS
 from gs_manager.validators import validate_int_list, validate_key_value
+from gs_manager.utils import download_file
 
 from ..generic import Rcon
 
@@ -268,9 +269,8 @@ class Ark(Rcon):
                 self.logger.debug(
                     '{}: {} {}'.format(filename, u_size, size))
                 if u_size == size:
-                    self.run_as_user(
-                        'rm {} {}'.format(
-                            file_path, size_file))
+                    os.remove(file_path)
+                    os.remove(size_file)
                 else:
                     self.logger.error(
                         'could not validate {}'
@@ -369,16 +369,15 @@ class Ark(Rcon):
             steamcmd_path = os.path.join(steamcmd_dir, 'steamcmd.sh')
 
             if not os.path.isdir(steamcmd_dir):
-                self.run_as_user('mkdir -p {}'.format(steamcmd_dir))
+                os.makedirs(steamcmd_dir, exist_ok=True)
 
             if not os.path.isfile(steamcmd_path):
                 self.logger.info('installing Steam locally for ARK...')
-                self.run_as_user(
-                    'wget {}'.format(STEAM_DOWNLOAD_URL), cwd=steamcmd_dir)
-                self.run_as_user(
-                    'tar -xf steamcmd_linux.tar.gz', cwd=steamcmd_dir)
-                self.run_as_user('rm steamcmd_linux.tar.gz', cwd=steamcmd_dir)
-                self.run_as_user('{} +quit'.format(steamcmd_path))
+                filename = download_file(STEAM_DOWNLOAD_URL)
+                self.run_command(
+                    'tar -xf {}'.format(filename), cwd=steamcmd_dir)
+                os.remove(os.path.join(steamcmd_dir, filename))
+                self.run_command('{} +quit'.format(steamcmd_path))
                 self.logger.success('Steam installed successfully')
         return status
 
@@ -439,12 +438,12 @@ class Ark(Rcon):
                         self.logger.debug(
                             'removing old mod_dir of {}...'
                             .format(workshop_item))
-                        self.run_as_user('rm -r {}'.format(mod_dir))
+                        shutil.rmtree(mod_dir)
                     if os.path.isfile(mod_file):
                         self.logger.debug(
                             'removing old mod_file of {}...'
                             .format(workshop_item))
-                        self.run_as_user('rm {}'.format(mod_file))
+                        os.remove(mod_file)
 
                     self.logger.debug('copying {}...'.format(workshop_item))
                     shutil.copytree(src_dir, mod_dir)

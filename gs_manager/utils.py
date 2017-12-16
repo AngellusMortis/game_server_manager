@@ -1,5 +1,4 @@
 import contextlib
-import getpass
 import hashlib
 import io
 import os
@@ -10,8 +9,6 @@ import sys
 
 import click
 import requests
-
-SUDO_FORMAT = 'sudo su - {} -c "{}"'
 
 
 def to_pascal_case(name):
@@ -59,17 +56,7 @@ def _create_pipeline(args, previous_process=None,
     return processes
 
 
-def run_as_user(user, command,
-                redirect_output=True,
-                return_process=False,
-                **kwargs):
-    current_user = getpass.getuser()
-
-    if current_user != user:
-        command = command.replace('"', '\\"')
-        command = command.replace('+', '\\+')
-        command = SUDO_FORMAT.format(user, command)
-
+def run_command(command, redirect_output=True, return_process=False, **kwargs):
     args = shlex.split(command)
 
     processes = []
@@ -107,18 +94,6 @@ def run_as_user(user, command,
             processes[-1].returncode, command, stdout)
 
 
-def write_as_user(user, path, file_string):
-    parent_dir = os.path.join(path, os.pardir)
-    current_user = getpass.getuser()
-
-    if user != current_user:
-        run_as_user(user, 'chown {} {}'.format(current_user, parent_dir))
-    with open(path, 'w') as f:
-        f.write(file_string)
-    if user != current_user:
-        run_as_user(user, 'chown {} {}'.format(user, parent_dir))
-
-
 def get_json(url):
     response = requests.get(url)
     response.raise_for_status()
@@ -137,7 +112,10 @@ def validate_checksum(path, checksum, checksum_type):
             'could not validate {} checksum'.format(checksum_type))
 
 
-def download_file(url, path, md5=None, sha1=None):
+def download_file(url, path=None, md5=None, sha1=None):
+    if path is None:
+        path = url.split('/')[-1]
+
     response = requests.get(url, stream=True)
     response.raise_for_status()
 
@@ -160,6 +138,7 @@ def download_file(url, path, md5=None, sha1=None):
         validate_checksum(tmp_file, sha1, 'sha1')
 
     os.rename(tmp_file, path)
+    return path
 
 
 @contextlib.contextmanager

@@ -211,7 +211,7 @@ class Steam(Base):
             )
             return STATUS_PARTIAL_FAIL
         else:
-            process = self.run_as_user(
+            process = self.run_command(
                 '{} +login anonymous +force_install_dir {} +app_update '
                 '{} validate +quit'
                 .format(
@@ -273,7 +273,7 @@ class Steam(Base):
         with click.progressbar(self.config['workshop_items']) as bar:
             for workshop_item in bar:
                 try:
-                    self.run_as_user(
+                    self.run_command(
                         '{} +login anonymous +force_install_dir {} '
                         '+workshop_download_item {} {} +quit'
                         .format(

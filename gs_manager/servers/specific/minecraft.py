@@ -324,13 +324,15 @@ class Minecraft(Java):
             server_property_string = ''
             for key, value in self.mc_config.items():
                 server_property_string += '{}={}\n'.format(key, value)
-            self.write_as_user(property_path, server_property_string)
+            with open(property_path, 'w') as f:
+                f.write(server_property_string)
             self._mc_config = None
             self.mc_config
 
         if accept_eula:
             eula_path = os.path.join(self.config['path'], 'eula.txt')
-            self.write_as_user(eula_path, 'eula=true')
+            with open(eula_path, 'w') as f:
+                f.write('eula=true')
 
         return self.invoke(
             super(Minecraft, self).start,
@@ -490,9 +492,9 @@ class Minecraft(Java):
                     self.context,
                     get_param_obj(self.context, 'minecraft_version')
                 )
-            self.run_as_user('rm {}'.format(link_path))
+            os.remove(link_path)
 
-        self.run_as_user('ln -s {} {}'.format(jar_path, link_path))
+        self.run_command('ln -s {} {}'.format(jar_path, link_path))
 
         self.logger.success('minecraft v{} enabled'.format(minecraft_version))
         return STATUS_SUCCESS
