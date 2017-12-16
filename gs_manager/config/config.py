@@ -251,4 +251,4 @@ class Config(DictConfig):
         return self._instances[name]
 
     def get_instances(self):
-        return self['instance_overrides'].keys()
+        return list(self['instance_overrides'].keys())

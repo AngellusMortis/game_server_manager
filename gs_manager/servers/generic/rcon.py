@@ -145,7 +145,8 @@ class Rcon(Steam):
                 try:
                     rcon.connect()
                 except ConnectionRefusedError:
-                    self.logger.warning('could not connect to RCON')
+                    if do_print:
+                        self.logger.warning('could not connect to RCON')
                     return STATUS_FAILED
                 else:
                     rcon.authenticate()
@@ -158,9 +159,10 @@ class Rcon(Steam):
                         self.logger.info(output)
                     return STATUS_SUCCESS
             else:
-                self.logger.warning(
-                    '{} does not have RCON enabled'
-                    .format(i_config['name']))
+                if do_print:
+                    self.logger.warning(
+                        '{} does not have RCON enabled'
+                        .format(i_config['name']))
                 return STATUS_PARTIAL_FAIL
         else:
             self.logger.warning('{} is not running'.format(i_config['name']))

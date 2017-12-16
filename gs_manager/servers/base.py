@@ -1,7 +1,7 @@
 import os
 import signal
 import time
-from subprocess import PIPE, STDOUT
+from subprocess import PIPE, STDOUT, CalledProcessError
 
 import click
 import psutil
@@ -55,6 +55,7 @@ class Base(object):
             'force',
             'foreground',
             'help',
+            'multi',
             'no_verify',
             'parallel',
             'path',
@@ -172,6 +173,7 @@ class Base(object):
         return False
 
     def _stop(self, pid=None):
+        stopped = False
         if hasattr(self, 'command') and \
                 isinstance(self.command, click.Command) and \
                 self.config['stop_command'] is not None:
@@ -183,12 +185,17 @@ class Base(object):
                     do_print=False
                 )
 
-            self.invoke(
+            response = self.invoke(
                 self.command,
                 command_string=self.config['stop_command'],
                 do_print=False
             )
-        else:
+            if response == STATUS_SUCCESS:
+                stopped = True
+            else:
+                self.logger.debug('stop command failed, sending kill signal')
+
+        if not stopped:
             if pid is None:
                 pid = self.get_pid(self.config['current_instance'])
             if pid is not None:
@@ -258,6 +265,8 @@ class Base(object):
         return True
 
     def invoke(self, method, *args, **kwargs):
+        if self.supports_multi_instance:
+            kwargs['current_instance'] = self.config['current_instance']
         return self.context.invoke(method, *args, **kwargs)
 
     def run_as_user(self, command, **kwargs):

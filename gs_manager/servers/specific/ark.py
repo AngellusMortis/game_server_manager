@@ -272,6 +272,10 @@ class Ark(Rcon):
                         'rm {} {}'.format(
                             file_path, size_file))
                 else:
+                    self.logger.error(
+                        'could not validate {}'
+                        .format(to_extract_path)
+                    )
                     return False
         return True
 
@@ -376,6 +380,7 @@ class Ark(Rcon):
                 self.run_as_user('rm steamcmd_linux.tar.gz', cwd=steamcmd_dir)
                 self.run_as_user('{} +quit'.format(steamcmd_path))
                 self.logger.success('Steam installed successfully')
+        return status
 
     @single_instance
     @click.command()
@@ -410,9 +415,6 @@ class Ark(Rcon):
                 self.config['path'], 'steamapps', 'workshop',
                 'content', str(self.config['workshop_id'])
             )
-
-            self.logger.debug('mod_path: {}'.format(mod_path))
-            self.logger.debug('base_src_dir: {}'.format(base_src_dir))
 
             with click.progressbar(self.config['workshop_items']) as bar:
                 for workshop_item in bar:
@@ -456,9 +458,6 @@ class Ark(Rcon):
                         return STATUS_FAILED
 
                     if not self._extract_files(mod_dir):
-                        self.logger.error(
-                            'could not validate {}'
-                            .format(to_extract_path)
-                        )
                         return STATUS_FAILED
             self.logger.success('workshop items successfully installed')
+        return status

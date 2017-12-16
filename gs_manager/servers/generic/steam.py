@@ -164,7 +164,7 @@ class Steam(Base):
             try:
                 server_info = server.info()
                 self.logger.success(
-                    '{} is running'.format(self.config['name'])
+                    '{} is running'.format(i_config['name'])
                 )
                 self.logger.info(
                     'server name: {}'.format(server_info['server_name'])
@@ -253,40 +253,41 @@ class Steam(Base):
         if self.is_running('@any'):
             self.logger.warning(
                 '{} is still running'.format(self.config['name']))
-            status = STATUS_PARTIAL_FAIL
-        else:
-            status = self.invoke(
-                self.install,
-                app_id=self.config['workshop_id'],
+            return STATUS_PARTIAL_FAIL
+
+        status = self.invoke(
+            self.install,
+            app_id=self.config['workshop_id'],
+        )
+
+        if not status == STATUS_SUCCESS:
+            return status
+
+        if len(self.config['workshop_items']) == 0:
+            self.logger.warning(
+                '\nno workshop items selected for install'
             )
+            return STATUS_PARTIAL_FAIL
 
-            if status == STATUS_SUCCESS:
-                self.logger.info('downloading workshop items...')
-                with click.progressbar(self.config['workshop_items']) as bar:
-                    for workshop_item in bar:
-                        try:
-                            self.run_as_user(
-                                '{} +login anonymous +force_install_dir {} '
-                                '+workshop_download_item {} {} +quit'
-                                .format(
-                                    self.config['steamcmd_path'],
-                                    self.config['path'],
-                                    self.config['workshop_id'],
-                                    workshop_item,
-                                ),
-                            )
-                        except CalledProcessError:
-                            self.logger.error(
-                                '\nfailed to validate workshop items'
-                            )
-                            return STATUS_FAILED
-
-                if len(self.config['workshop_id']) == 0:
-                    self.logger.warning(
-                        '\nno workshop items selected for install'
+        self.logger.info('downloading workshop items...')
+        with click.progressbar(self.config['workshop_items']) as bar:
+            for workshop_item in bar:
+                try:
+                    self.run_as_user(
+                        '{} +login anonymous +force_install_dir {} '
+                        '+workshop_download_item {} {} +quit'
+                        .format(
+                            self.config['steamcmd_path'],
+                            self.config['path'],
+                            self.config['workshop_id'],
+                            workshop_item,
+                        ),
                     )
-                    status = STATUS_PARTIAL_FAIL
-                else:
-                    self.logger.success('\nvalidated workshop items')
-                    status = STATUS_SUCCESS
-        return status
+                except CalledProcessError:
+                    self.logger.error(
+                        '\nfailed to validate workshop items'
+                    )
+                    return STATUS_FAILED
+
+        self.logger.success('\nvalidated workshop items')
+        return STATUS_SUCCESS

@@ -17,6 +17,8 @@ def _instance_wrapper(command, all_callback):
 
         server.context = context
         server.config.add_cli_config(kwargs)
+        server.config['current_instance'] = instance
+
         server.logger.debug(
             'command start: {}'.format(context.command.name))
 
@@ -43,7 +45,7 @@ def _instance_wrapper(command, all_callback):
     return _wrapper
 
 
-def _run_sync(context, command):
+def _run_sync(context, callback, *args, **kwargs):
     """ runs command for each instance in @all synchronously """
     config = context.obj.config
     logger = context.obj.logger
@@ -51,16 +53,18 @@ def _run_sync(context, command):
     for instance_name in config.get_instances():
         logger.debug(
             'running {} for instance: {}'
-            .format(command.name, instance_name))
+            .format(context.command.name, instance_name))
 
         config['current_instance'] = instance_name
         config['multi'] = True
-        result = command(**dict(context.params))
+        kwargs.update(context.params)
+
+        result = callback(*args, **kwargs)
         results.append(result)
     return results
 
 
-def _run_parallel(context, command):
+def _run_parallel(context, callback):
     """ runs command for each instance in @all in parallel """
     config = context.obj.config
     logger = context.obj.logger
@@ -68,14 +72,14 @@ def _run_parallel(context, command):
 
     logger.info(
         'running {} for {} @all completed...'
-        .format(command.name, config['name'])
+        .format(context.command.name, config['name'])
     )
 
     # create process for each instances
     for instance_name in config.get_instances():
         logger.debug(
             'spawning {} for instance: {}'
-            .format(command.name, instance_name)
+            .format(context.command.name, instance_name)
         )
         copy_config = Config(context)
         copy_config['current_instance'] = instance_name
@@ -84,30 +88,31 @@ def _run_parallel(context, command):
         context.obj.config = copy_config
 
         p = Process(
-            target=surpress(command),
+            target=surpress(callback),
             kwargs=dict(context.params),
             daemon=True,
         )
         p.start()
         processes.append(p)
 
-        bar = click.progressbar(length=len(processes))
-        completed = None
-        previous_completed = None
-        not_done = True
-        while not_done:
-            alive_list = [p.is_alive() for p in processes]
-            logger.debug('processes alive: {}'.format(alive_list))
-            not_done = any(alive_list)
-            completed = sum([int(not c) for c in alive_list])
-            if not completed == previous_completed:
-                bar.update(completed)
-                previous_completed = completed
-            time.sleep(1)
+    bar = click.progressbar(length=len(processes), show_eta=False)
+    completed = None
+    previous_completed = None
+    not_done = True
+    while not_done:
+        logger.debug('processes: {}'.format(processes))
+        alive_list = [p.is_alive() for p in processes]
+        logger.debug('processes alive: {}'.format(alive_list))
+        not_done = any(alive_list)
+        completed = sum([int(not c) for c in alive_list])
+        if not completed == previous_completed:
+            bar.update(completed)
+            previous_completed = completed
+        time.sleep(1)
 
     logger.success(
         '\n{} {} @all completed'
-        .format(command.name, config['name'])
+        .format(context.command.name, config['name'])
     )
     return [p.exitcode for p in processes]
 
@@ -145,7 +150,7 @@ def multi_instance(command):
             if config['parallel']:
                 _run_parallel(context, original_command)
             else:
-                _run_sync(context, command)
+                _run_sync(context, original_command, *args, **kwargs)
         else:
             logger.debug(
                 'no valid instances found, removing current_instance...')
