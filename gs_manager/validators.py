@@ -12,29 +12,27 @@ except ImportError:
 def validate_int_list(context, param, value):
     if value is not None:
         try:
-            values = value.split(',')
+            values = value.split(",")
             for index in range(len(values)):
                 values[index] = int(values[index])
             return values
         except ValueError:
-            raise click.BadParameter(
-                'value need to be a comma seperated list of int')
+            raise click.BadParameter("value need to be a comma seperated list of int")
 
 
 def validate_instance_overrides(context, param, values):
     overrides = {}
     for value in values:
-        parts = list(value.partition(':'))
+        parts = list(value.partition(":"))
         if len(parts) == 3:
             try:
                 parts[2] = json.loads(parts[2])
             except JSONError:
-                raise click.BadParameter(
-                    'invalid override JSON', context, param)
+                raise click.BadParameter("invalid override JSON", context, param)
             else:
                 overrides[parts[0]] = parts[2]
         else:
-            raise click.BadParameter('invalid override format', context, param)
+            raise click.BadParameter("invalid override format", context, param)
     if len(overrides.keys()) == 0:
         overrides = None
     return overrides
@@ -44,11 +42,11 @@ def validate_key_value(context, param, values):
     return_dict = {}
     valid = True
     for value in values:
-        if value.startswith('#') or value.startswith('='):
+        if value.startswith("#") or value.startswith("="):
             valid = False
             continue
 
-        parts = value.split('=')
+        parts = value.split("=")
         if len(parts) > 2:
             valid = False
             continue
@@ -61,19 +59,15 @@ def validate_key_value(context, param, values):
 
     if not valid and context is not None and param is not None:
         raise click.BadParameter(
-            'invalid server key-value pair',
-            context,
-            param,
+            "invalid server key-value pair", context, param,
         )
     return return_dict
 
 
 def validate_string_value(context, param, value):
     if len(value) > 0:
-        match = re.match('^[^|]+$', value, re.I)
+        match = re.match("^[^|]+$", value, re.I)
         if not match or not match.group() == value:
             raise click.BadParameter(
-                'cannot contain a | character',
-                context,
-                param,
+                "cannot contain a | character", context, param,
             )

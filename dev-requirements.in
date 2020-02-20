@@ -7,3 +7,6 @@ pytest-cov
 tox
 twine
 versioneer
+pylama
+black
+bandit

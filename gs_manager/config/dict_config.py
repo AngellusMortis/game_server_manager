@@ -7,7 +7,7 @@ class DictConfig(object):
 
     def __length_hint__(self):
         self._set_final_config()
-        if hasattr(self._final_config, '__length_hint__'):
+        if hasattr(self._final_config, "__length_hint__"):
             return self._final_config.__length_hint__()
         return None
 
