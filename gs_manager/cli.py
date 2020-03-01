@@ -2,119 +2,95 @@
 # -*- coding: utf-8 -*-
 
 """Console script for game_server_manager."""
-
-import getpass
 import inspect
-import os
-import sys
-from functools import update_wrapper
 
 import click
-import shlex
-from gs_manager import servers
-from gs_manager.config import Config, DEFAULT_SERVER_TYPE
+
+from gs_manager.command import DEFAULT_CONFIG, Config, ConfigCommandClass
+from gs_manager.command.types import Server, ServerClass
 from gs_manager.logger import get_logger
-from gs_manager.utils import get_server_class, to_snake_case
+from gs_manager.servers import EmptyServer
 
 
-def get_types():
-    server_classes = inspect.getmembers(servers, predicate=inspect.isclass)
-    types = []
-    for server in server_classes:
-        types.append(to_snake_case(server[0]))
-    return types
-
-
-def check_relaunch(config):
-    current_user = getpass.getuser()
-    if current_user != config["user"]:
-        sys.argv[0] = os.path.abspath(sys.argv[0])
-        command = " ".join(sys.argv)
-        args = shlex.split('sudo su {} -c "{}"'.format(config["user"], command))
-        os.execvp("sudo", args)
-
-
-@click.group(chain=True, invoke_without_command=True, add_help_option=False)
-@click.option(
-    "-p",
-    "--path",
-    type=click.Path(),
-    help="Starting directory. If empty, it uses current directory. "
-    "Will automatically look in upto 5 parent directories for "
-    "config as well",
+@click.group(
+    cls=ConfigCommandClass,
+    chain=True,
+    invoke_without_command=True,
+    add_help_option=False,
 )
+# Generic Parameters
 @click.option(
     "-c",
-    "--config",
+    "--config-file",
     type=click.Path(),
-    help=(
-        "Path to JSON config file. Config file options override "
-        "default ones. CLI options override config file options. "
-        "Ignored if file does not exist."
-    ),
+    default=DEFAULT_CONFIG,
+    help="Config file to read vars from",
 )
 @click.option(
-    "-s", "--save", is_flag=True, help=("Save config to JSON file after loading")
+    "-p",
+    "--server-path",
+    type=click.Path(),
+    default=Config.server_path,
+    help="The root path for the game server",
+)
+@click.option(
+    "-s",
+    "--save",
+    is_flag=True,
+    help=("Save config to YML file after loading"),
+)
+@click.option(
+    "-d", "--debug", is_flag=True, help="Show extra debug information"
 )
 @click.option(
     "-t",
-    "--type",
-    type=click.Choice(get_types()),
-    help="Type of gameserver to run. Defaults to " "{}".format(DEFAULT_SERVER_TYPE),
+    "--server-type",
+    type=ServerClass(),
+    help="Type of gameserver to run",
+    default=Config.server_type,
 )
-@click.option("-d", "--debug", is_flag=True, help="Show extra debug information")
 @click.option("-h", "--help", is_flag=True, help="Shows this message and exit")
-@click.option(
-    "-u", "--user", type=str, help="User to run gameserver as. Defaults to current user"
-)
 @click.pass_context
-def main(context, *args, **kwargs):
-    """ Console script for game_server_manager """
+def main(
+    context: click.Context,
+    config_file: str,
+    server_path: str,
+    save: bool,
+    debug: bool,
+    server_type: Server,
+    help: bool,
+    **kwargs,
+):
+    """ Console script for gs_manager """
 
-    config = Config(context)
-    check_relaunch(config)
-    logger = get_logger(config)
-    context.obj = get_server_class(config, context)(context, config)
+    logger = get_logger()
 
-    possible_commands = inspect.getmembers(context.obj)
-    for command in possible_commands:
-        if isinstance(command[1], click.Command):
-            logger.debug("adding command {}...".format(command[0]))
-            main.add_command(command_wrap(context, command[1]))
+    logger.debug("Initial Context:")
+    logger.debug(context.params)
 
-    if kwargs["help"] or context.invoked_subcommand is None:
+    if isinstance(context.obj, EmptyServer):
+        server: EmptyServer = context.obj
+        config: Config = server.config
+
+        logger.debug("Initial Server Config:")
+        logger.debug(config.__dict__)
+
+        all_members = inspect.getmembers(server)
+        subcommands = []
+        for member in all_members:
+            if isinstance(member[1], click.Command):
+                main.add_command(member[1], name=member[0])
+                subcommands.append(member[0])
+        logger.debug(f"Found subcommands:")
+        logger.debug(subcommands)
+    else:
+        config: Config = context.obj
+
+    if help or context.invoked_subcommand is None:
         click.echo(context.get_help())
-        check_for_save(context)
-        exit(0)
 
-
-def check_for_save(context):
-    if context.obj.config["save"]:
-        context.obj.logger.debug("saving config...")
-        context.obj.config.save()
-
-
-def command_wrap(context, command):
-    orig = command.callback
-
-    options = context.obj.global_options()["all"]
-    if context.obj.supports_multi_instance:
-        options += context.obj.global_options()["instance_enabled"]
-
-    for option in options:
-        command.params.append(click.Option(**option))
-
-    def new_func(*args, **kwargs):
-        # add local cli config
-        if len(kwargs.keys()) > 0:
-            context.obj.logger.debug("adding cli config...")
-            context.obj.config.add_cli_config(kwargs)
-        result = orig(*args, **kwargs)
-        check_for_save(context)
-        return result
-
-    command.callback = update_wrapper(new_func, orig)
-    return command
+    if save:
+        config.save_config()
 
 
 if __name__ == "__main__":
