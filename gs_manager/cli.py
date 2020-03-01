@@ -10,6 +10,7 @@ from gs_manager.command import DEFAULT_CONFIG, Config, ConfigCommandClass
 from gs_manager.command.types import Server, ServerClass
 from gs_manager.logger import get_logger
 from gs_manager.servers import EmptyServer
+import logging
 
 
 @click.group(
@@ -67,6 +68,7 @@ def main(
 
     logger.debug("Initial Context:")
     logger.debug(context.params)
+    logger.debug(context.args)
 
     if isinstance(context.obj, EmptyServer):
         server: EmptyServer = context.obj
@@ -75,14 +77,8 @@ def main(
         logger.debug("Initial Server Config:")
         logger.debug(config.__dict__)
 
-        all_members = inspect.getmembers(server)
-        subcommands = []
-        for member in all_members:
-            if isinstance(member[1], click.Command):
-                main.add_command(member[1], name=member[0])
-                subcommands.append(member[0])
-        logger.debug(f"Found subcommands:")
-        logger.debug(subcommands)
+        add_global_options(server, logger)
+        add_subcommands(server, logger)
     else:
         config: Config = context.obj
 
@@ -91,6 +87,27 @@ def main(
 
     if save:
         config.save_config()
+
+
+def add_global_options(server: EmptyServer, logger: logging.getLoggerClass()):
+    options = server.config.global_options["all"]
+
+    for option in options:
+        main.params.append(click.Option(**option))
+
+    logger.debug("Found global options:")
+    logger.debug(options)
+
+
+def add_subcommands(server: EmptyServer, logger: logging.getLoggerClass()):
+    all_members = inspect.getmembers(server)
+    subcommands = []
+    for member in all_members:
+        if isinstance(member[1], click.Command):
+            main.add_command(member[1], name=member[0])
+            subcommands.append(member[0])
+    logger.debug("Found subcommands:")
+    logger.debug(subcommands)
 
 
 if __name__ == "__main__":
