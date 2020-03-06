@@ -20,12 +20,21 @@ def require(param: str):
             context = click.get_current_context()
             config = context.obj.config
 
-            if not hasattr(config, param) or getattr(config, param) is None:
-                raise click.BadParameter(
-                    f"must provide {param}",
-                    context,
-                    get_param_obj(context, param),
-                )
+            value = kwargs.get(param)
+
+            if value is None:
+                if (
+                    not hasattr(config, param)
+                    or getattr(config, param) is None
+                ):
+                    raise click.BadParameter(
+                        f"must provide {param}",
+                        context,
+                        get_param_obj(context, param),
+                    )
+                value = getattr(config, param)
+
+            config.validate(param, value)
 
             return original_command(*args, **kwargs)
 

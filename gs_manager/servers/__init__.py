@@ -1,21 +1,23 @@
-from typing import List, Optional
+import importlib
 import inspect
 import sys
-import importlib
+from typing import List, Optional
 
 from gs_manager.servers.base import (
-    EmptyServer,
-    BaseServer,
     STATUS_FAILED,
     STATUS_PARTIAL_FAIL,
     STATUS_SUCCESS,
+    BaseServer,
+    EmptyServer,
 )
-
+from gs_manager.servers.generic import JavaServer, ScreenServer
 
 __all__ = [
     "get_servers",
     "EmptyServer",
     "BaseServer",
+    "ScreenServer",
+    "JavaServer",
     "STATUS_FAILED",
     "STATUS_PARTIAL_FAIL",
     "STATUS_SUCCESS",

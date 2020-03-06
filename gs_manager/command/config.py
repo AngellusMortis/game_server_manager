@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import os
-from typing import Callable, Dict, List, Optional, Union, get_type_hints
+from typing import Any, Callable, Dict, List, Optional, Union, get_type_hints
 
 import click
 import yaml
@@ -84,6 +84,12 @@ class BaseConfig:
             return self._config_types[param]
         return None
 
+    def validate(self, param: str, value: Any) -> Any:
+        if param in self._validators:
+            for validator in self._validators[param]:
+                value = validator.validate(value)
+        return value
+
     def _update_config_from_dict(
         self, config_dict: dict, ignore_unknown=False, ignore_bool=False
     ) -> None:
@@ -94,9 +100,7 @@ class BaseConfig:
             elif key not in self._config_options or value is None:
                 continue
 
-            if key in self._validators:
-                for validator in self._validators[key]:
-                    value = validator.validate(value)
+            value = self.validate(key, value)
 
             expected_type = self.get_type_for_param(key)
             if not ignore_bool or (expected_type != bool or value):

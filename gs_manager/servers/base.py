@@ -40,7 +40,7 @@ class BaseServerConfig(Config):
     user: str = getpass.getuser()
 
     # start command config
-    wait_start: int = 1
+    wait_start: int = 3
     max_start: int = 60
     spawn_process: bool = False
     start_command: str = None
@@ -53,6 +53,9 @@ class BaseServerConfig(Config):
 
     # save command config
     save_command: str = None
+
+    # say command config
+    say_command: str = None
 
     @property
     def global_options(self):
@@ -104,6 +107,7 @@ class EmptyServer(NullServer):
 
     @property
     def config(self) -> Config:
+        self._config.update_config(self.context)
         return self._config
 
     @property
@@ -128,7 +132,7 @@ class BaseServer(EmptyServer):
 
     @property
     def config(self) -> BaseServerConfig:
-        return self._config.current_instance
+        return super().config.current_instance
 
     def set_instance(
         self, instance_name: str, multi_instance: bool = False
@@ -142,13 +146,15 @@ class BaseServer(EmptyServer):
             return self.config.name
         return f"{self.config.parent.name}_{self.config.name}"
 
-    def _get_pid_filename(self):
-        return ".pid_file"
+    def _get_pid_filename(self) -> str:
+        if self.config.parent is None:
+            return ".pid_file"
+        return f".pid_file_{self.config.name}"
 
-    def _get_pid_file_path(self):
+    def _get_pid_file_path(self) -> str:
         return get_server_path(self._get_pid_filename())
 
-    def _read_pid_file(self):
+    def _read_pid_file(self) -> Optional[int]:
         pid = None
         pid_file = self._get_pid_file_path()
         if os.path.isfile(pid_file):
@@ -160,23 +166,20 @@ class BaseServer(EmptyServer):
                     pass
         return pid
 
-    def _write_pid_file(self, pid):
+    def _write_pid_file(self, pid: int) -> None:
         self.logger.debug("write pid: {}".format(pid))
         if pid is not None:
             pid_file = self._get_pid_file_path()
             with open(pid_file, "w") as f:
                 f.write(str(pid))
 
-    def _delete_pid_file(self):
+    def _delete_pid_file(self) -> None:
         pid_file = self._get_pid_file_path()
         if os.path.isfile(pid_file):
             os.remove(pid_file)
 
     def _startup_check(self) -> int:
         self.logger.info("")
-
-        if self.config.wait_start > 0:
-            time.sleep(self.config.wait_start)
 
         def _wait_callback():
             if self.is_running() and self.is_accessible():
@@ -201,7 +204,7 @@ class BaseServer(EmptyServer):
             self.logger.error(f"could not start {self.config.name}")
             return STATUS_FAILED
 
-    def _find_pid(self, require=True):
+    def _find_pid(self, require: bool = True) -> None:
         command = (
             self.config.start_command.replace('"', '\\"')
             .replace("?", "\\?")
@@ -214,9 +217,11 @@ class BaseServer(EmptyServer):
             "awk '{{print $2}}'"
         ).split("\n")
 
+        self.logger.debug(f"pids: {pids}")
+
         for pid in pids:
             if pid is not None and not pid == "":
-                self.run_command("ps -ef | grep {}".format(pid))
+                self.run_command(f"ps -ef | grep {pid}")
 
         if pids[0] is None and not pids[0] == "":
             if require:
@@ -231,7 +236,7 @@ class BaseServer(EmptyServer):
         label: Optional[str] = None,
         show_eta: bool = True,
         show_percent: bool = True,
-    ):
+    ) -> None:
         with click.progressbar(
             length=seconds,
             label=label,
@@ -244,8 +249,10 @@ class BaseServer(EmptyServer):
                         break
                 time.sleep(1)
 
-    def _prestop(self, seconds, verb="shutting down", reason=""):
-        if self._say_exists():
+    def _prestop(
+        self, seconds: int, verb: str = "shutting down", reason: str = ""
+    ) -> bool:
+        if self._command_exists("say_command"):
             if reason != "":
                 reason = f" {reason}"
 
@@ -256,15 +263,17 @@ class BaseServer(EmptyServer):
                 seconds = seconds % 60
                 time = f"{minutes} minutes and {seconds} seconds"
 
+            message = f"Server is {verb} in {time}...{reason}"
+
             self.invoke(
-                self.say,
-                message=f"Server is {verb} in {time}...{reason}",
+                self.command,
+                command_string=self.config.say_command.format(message),
                 do_print=False,
             )
             return True
         return False
 
-    def _stop(self, pid=None):
+    def _stop(self, pid: Optional[int] = None) -> None:
         stopped = False
         if self._command_exists("stop_command"):
             if self._command_exists("save_command"):
@@ -298,18 +307,10 @@ class BaseServer(EmptyServer):
             and getattr(self.config, command) is not None
         )
 
-    def _say_exists(self):
-        return (
-            hasattr(self, "say")
-            and isinstance(self.command, click.Command)
-            and hasattr(self.config, "say_command")
-            and getattr(self.config, "say_command") is not None
-        )
-
-    def get_pid(self):
+    def get_pid(self) -> int:
         return self._read_pid_file()
 
-    def is_running(self, delete_pid=True):
+    def is_running(self, delete_pid: bool = True) -> bool:
         """ checks if gameserver is running """
 
         pid = self.get_pid()
@@ -323,15 +324,13 @@ class BaseServer(EmptyServer):
                 return True
         return False
 
-    def is_accessible(self):
+    def is_accessible(self) -> bool:
         return self.is_running(delete_pid=False)
 
-    def run_command(self, command, **kwargs):
+    def run_command(self, command: str, **kwargs) -> str:
         """ runs command with debug logging """
 
-        self.logger.debug(
-            "run command: '{}'".format(self.config.user, command)
-        )
+        self.logger.debug(f"run command ({self.config.user}: '{command}'")
         try:
             output = run_command(command, **kwargs)
         except Exception as ex:
@@ -342,10 +341,10 @@ class BaseServer(EmptyServer):
 
         return output
 
-    def invoke(self, method, *args, **kwargs):
+    def invoke(self, method: Callable, *args, **kwargs) -> int:
         return self.context.invoke(method, *args, **kwargs)
 
-    def kill_server(self):
+    def kill_server(self) -> None:
         """ forcibly kills server process """
 
         pid = self.get_pid()
@@ -355,7 +354,7 @@ class BaseServer(EmptyServer):
     @multi_instance
     @click.command(cls=ServerCommandClass)
     @click.pass_obj
-    def print_config(self, *args, **kwargs):
+    def print_config(self, *args, **kwargs) -> int:
         """ Debug tool to just print out your server config """
 
         config_dict = self.config.__dict__
@@ -371,7 +370,7 @@ class BaseServer(EmptyServer):
     @multi_instance
     @click.command(cls=ServerCommandClass)
     @click.pass_obj
-    def status(self, *args, **kwargs):
+    def status(self, *args, **kwargs) -> int:
         """ checks if gameserver is running or not """
 
         if not self.is_running():
@@ -442,7 +441,14 @@ class BaseServer(EmptyServer):
     )
     @click.option("--start-command", type=str, help="Start up command")
     @click.pass_obj
-    def start(self, no_verify: bool, foreground: bool, *args, **kwargs):
+    def start(
+        self,
+        no_verify: bool,
+        foreground: bool,
+        start_command: Optional[str] = None,
+        *args,
+        **kwargs,
+    ) -> int:
         """ starts gameserver """
 
         if self.is_running():
@@ -452,7 +458,7 @@ class BaseServer(EmptyServer):
         self._delete_pid_file()
         self.logger.info(f"starting {self.config.name}...", nl=False)
 
-        command = self.config.start_command
+        command = start_command or self.config.start_command
         popen_kwargs = {}
         if self.config.spawn_process and not foreground:
             log_file_path = get_server_path(
@@ -494,6 +500,9 @@ class BaseServer(EmptyServer):
                 stdout=DEVNULL,
             )
 
+        if self.config.wait_start > 0:
+            time.sleep(self.config.wait_start)
+
         self._find_pid()
         if no_verify:
             return STATUS_SUCCESS
@@ -532,7 +541,9 @@ class BaseServer(EmptyServer):
     )
     @click.option("-v", "--verb", type=str, help="Shutdown verb", default="")
     @click.pass_obj
-    def stop(self, force: bool, reason: str, verb: str, *args, **kwargs):
+    def stop(
+        self, force: bool, reason: str, verb: str, *args, **kwargs
+    ) -> int:
         """ stops gameserver """
 
         if verb == "":
@@ -621,7 +632,7 @@ class BaseServer(EmptyServer):
     )
     @click.argument("edit_path", type=click.Path())
     @click.pass_obj
-    def edit(self, force: bool, edit_path: str, *args, **kwargs):
+    def edit(self, force: bool, edit_path: str, *args, **kwargs) -> int:
         """ edits a server file with your default editor """
 
         if not force and self.is_running():
