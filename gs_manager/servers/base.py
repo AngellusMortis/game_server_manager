@@ -10,7 +10,7 @@ import click
 import psutil
 
 from gs_manager.command import Config, ServerCommandClass
-from gs_manager.decorators import require, single_instance, multi_instance
+from gs_manager.decorators import multi_instance, require, single_instance
 from gs_manager.logger import get_logger
 from gs_manager.null import NullServer
 from gs_manager.utils import get_server_path, run_command

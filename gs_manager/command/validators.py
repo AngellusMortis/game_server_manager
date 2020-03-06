@@ -1,9 +1,10 @@
 import os
-from typing import Any
+from typing import Any, Dict
 
-from gs_manager.command.types import ServerClass, Server
-from gs_manager.utils import get_server_path
 import click
+
+from gs_manager.command.types import KeyValuePairs, Server, ServerClass
+from gs_manager.utils import get_server_path
 
 
 class GenericConfigType:
@@ -30,7 +31,8 @@ class ServerType(GenericConfigType):
 class ServerFileType(GenericConfigType):
     @staticmethod
     def validate(value) -> str:
-        # do not validate file paths inside of service dir if context is not active yet
+        # do not validate file paths inside of service dir if context is
+        # not active yet
         try:
             click.get_current_context()
         except RuntimeError:
@@ -40,3 +42,9 @@ class ServerFileType(GenericConfigType):
             raise ValueError("File does not exist")
 
         return value
+
+
+class KeyValuePairsType(GenericConfigType):
+    @staticmethod
+    def validate(values) -> Dict[str, str]:
+        return KeyValuePairs()(values)

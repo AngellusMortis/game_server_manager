@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Union
+from typing import Dict, List, Union
 
 import click
 
@@ -50,3 +50,38 @@ class ServerClass(click.ParamType):
             )
 
         return Server(value, klass)
+
+
+class KeyValuePairs(click.ParamType):
+    def convert(
+        self, values: Union[str, List[str]], param: str, ctx: click.Context
+    ) -> Dict[str, str]:
+
+        if isinstance(values, str):
+            values = [values]
+
+        return_dict = {}
+
+        for value in values:
+            valid = True
+
+            if value.startswith("#") or value.startswith("="):
+                valid = False
+                continue
+
+            parts = value.split("=")
+            if len(parts) > 2:
+                valid = False
+                continue
+
+            if len(parts) == 1:
+                value = None
+            elif len(parts) == 2:
+                value = parts[1].strip()
+
+            return_dict[parts[0]] = value
+
+            if not valid:
+                self.fail(f"{value} is not a valid key-value pair\n")
+
+        return return_dict

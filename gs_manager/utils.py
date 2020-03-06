@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import io
 import os
 import re
@@ -8,6 +9,7 @@ import sys
 from typing import List, Union
 
 import click
+import requests
 
 __all__ = [
     "to_pascal_case",
@@ -34,6 +36,12 @@ def get_server_path(path: Union[str, List[str]]) -> str:
     return os.path.join(context.obj.config.server_path, *path)
 
 
+def get_json(url: str) -> dict:
+    response = requests.get(url)
+    response.raise_for_status()
+    return response.json()
+
+
 def get_param_obj(context, name):
     param = None
     for p in context.command.params:
@@ -41,6 +49,48 @@ def get_param_obj(context, name):
             param = p
             break
     return param
+
+
+def validate_checksum(path, checksum, checksum_type):
+    data = None
+    file_checksum = None
+    with open(path, "rb") as f:
+        data = f.read()
+    file_checksum = getattr(hashlib, checksum_type)(data).hexdigest()
+
+    if not checksum == file_checksum:
+        raise click.ClickException(
+            "could not validate {} checksum".format(checksum_type)
+        )
+
+
+def download_file(url, path=None, md5=None, sha1=None):
+    if path is None:
+        path = url.split("/")[-1]
+
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+
+    tmp_file = path + ".tmp"
+    if os.path.isfile(tmp_file):
+        os.remove(tmp_file)
+    with open(tmp_file, "wb") as f:
+        with click.progressbar(
+            response.iter_content(chunk_size=1024),
+            length=int(response.headers.get("content-length")),
+        ) as bar:
+            for chunk in bar:
+                if chunk:
+                    f.write(chunk)
+                    f.flush()
+
+    if md5 is not None:
+        validate_checksum(tmp_file, md5, "md5")
+    if sha1 is not None:
+        validate_checksum(tmp_file, sha1, "sha1")
+
+    os.rename(tmp_file, path)
+    return path
 
 
 def _create_pipeline(

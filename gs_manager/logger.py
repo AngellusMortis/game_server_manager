@@ -3,6 +3,7 @@ import os
 import pprint
 
 import click
+
 from gs_manager.utils import get_server_path
 
 __all__ = ["get_logger", "ClickLogger"]

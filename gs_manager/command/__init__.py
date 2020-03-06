@@ -1,11 +1,11 @@
-from typing import Optional, Iterable
+from typing import Optional
 
 import click
 
 from gs_manager.command.config import (
-    Config,
     DEFAULT_CONFIG,
     DEFAULT_SERVER_TYPE,
+    Config,
 )
 
 __all__ = [
