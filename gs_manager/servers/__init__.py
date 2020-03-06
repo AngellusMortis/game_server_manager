@@ -3,10 +3,23 @@ import inspect
 import sys
 import importlib
 
-from gs_manager.servers.base import EmptyServer, BaseServer
+from gs_manager.servers.base import (
+    EmptyServer,
+    BaseServer,
+    STATUS_FAILED,
+    STATUS_PARTIAL_FAIL,
+    STATUS_SUCCESS,
+)
 
 
-__all__ = ["get_servers", "EmptyServer", "BaseServer"]
+__all__ = [
+    "get_servers",
+    "EmptyServer",
+    "BaseServer",
+    "STATUS_FAILED",
+    "STATUS_PARTIAL_FAIL",
+    "STATUS_SUCCESS",
+]
 
 
 def get_servers() -> List[str]:

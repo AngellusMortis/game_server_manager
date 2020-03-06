@@ -3,14 +3,20 @@
 
 """Console script for game_server_manager."""
 import inspect
+import logging
+from typing import List
 
 import click
 
 from gs_manager.command import DEFAULT_CONFIG, Config, ConfigCommandClass
 from gs_manager.command.types import Server, ServerClass
 from gs_manager.logger import get_logger
-from gs_manager.servers import EmptyServer
-import logging
+from gs_manager.servers import (
+    STATUS_FAILED,
+    STATUS_PARTIAL_FAIL,
+    STATUS_SUCCESS,
+    EmptyServer,
+)
 
 
 @click.group(
@@ -90,6 +96,30 @@ def main(
 
     if save:
         config.save_config()
+
+
+@main.resultcallback()
+def process_result(results: List[int], **kwargs) -> None:
+    logger = get_logger()
+
+    logger.debug("result callback")
+    logger.debug(results)
+    logger.debug(kwargs)
+
+    partial_failed = results.count(STATUS_PARTIAL_FAIL)
+    failed = results.count(STATUS_FAILED)
+    return_code = STATUS_SUCCESS
+    total = len(results)
+
+    if failed > 0:
+        return_code = STATUS_PARTIAL_FAIL
+    if partial_failed > 0:
+        return_code = STATUS_PARTIAL_FAIL
+
+    if failed == total:
+        return_code = STATUS_FAILED
+
+    click.get_current_context().exit(return_code)
 
 
 def add_global_options(

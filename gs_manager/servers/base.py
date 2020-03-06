@@ -365,6 +365,8 @@ class BaseServer(EmptyServer):
         self.logger.info(f"Config for {self.server_name}")
         self.logger.info(config_dict)
 
+        return STATUS_SUCCESS
+
     @require("start_command")
     @multi_instance
     @click.command(cls=ServerCommandClass)
@@ -632,3 +634,9 @@ class BaseServer(EmptyServer):
         self.run_command(
             f"{editor} {file_path}", redirect_output=False,
         )
+        return STATUS_SUCCESS
+
+
+class TestServer(BaseServer):
+    name: str = "test"
+    supports_multi_instance: bool = True

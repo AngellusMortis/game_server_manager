@@ -96,7 +96,9 @@ def _instance_wrapper(command: click.Command, multi_callback: Callable):
     return _wrapper
 
 
-def _run_sync(callback: Callable, instance_names: List[str], *args, **kwargs):
+def _run_sync(
+    callback: Callable, instance_names: List[str], *args, **kwargs
+) -> List[int]:
     """ runs command for each instance synchronously """
     from gs_manager.servers import BaseServer
 
@@ -115,12 +117,13 @@ def _run_sync(callback: Callable, instance_names: List[str], *args, **kwargs):
         results.append(result)
 
     server.set_instance(None, multi_instance=False)
+
     return results
 
 
 def _run_parallel(
     callback: Callable, instance_names: List[str], *args, **kwargs
-):
+) -> List[int]:
     """ runs command for each instance in @all in parallel """
     from gs_manager.servers import BaseServer
 
@@ -205,7 +208,15 @@ def multi_instance(command: click.Command):
     original_command = command.callback
 
     def multi_callback(instance_names: List[str], *args, **kwargs):
+        from gs_manager.servers import (
+            BaseServer,
+            STATUS_SUCCESS,
+            STATUS_FAILED,
+            STATUS_PARTIAL_FAIL,
+        )
+
         context = click.get_current_context()
+        server: BaseServer = context.obj
 
         if context.params.get("foreground"):
             raise click.ClickException(
@@ -213,9 +224,32 @@ def multi_instance(command: click.Command):
             )
 
         if context.params.get("parallel"):
-            _run_parallel(original_command, instance_names, *args, **kwargs)
+            results = _run_parallel(
+                original_command, instance_names, *args, **kwargs
+            )
         else:
-            _run_sync(original_command, instance_names, *args, **kwargs)
+            results = _run_sync(
+                original_command, instance_names, *args, **kwargs
+            )
+
+        server.logger.debug(f"results: {results}")
+        partial_failed = results.count(STATUS_PARTIAL_FAIL)
+        failed = results.count(STATUS_FAILED)
+        return_code = STATUS_SUCCESS
+        total = len(results)
+
+        if failed > 0:
+            server.logger.warning(f"{failed}/{total} return a failure code")
+            return_code = STATUS_PARTIAL_FAIL
+        if partial_failed > 0:
+            server.logger.warning(
+                f"{partial_failed}/{total} return a partial failure code"
+            )
+            return_code = STATUS_PARTIAL_FAIL
+
+        if failed == total:
+            return_code = STATUS_FAILED
+        return return_code
 
     wrapper_function = _instance_wrapper(original_command, multi_callback)
     command.callback = update_wrapper(wrapper_function, original_command)
@@ -230,6 +264,6 @@ def surpress(function):
     def _wrapper(*args, **kwargs):
         with surpress_stdout():
             result = function(*args, **kwargs)
-        return result
+        exit(result)
 
     return _wrapper
