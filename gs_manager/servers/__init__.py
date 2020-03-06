@@ -21,7 +21,7 @@ def get_servers() -> List[str]:
     return types
 
 
-def get_server_class(klass_name) -> Optional[EmptyServer]:
+def get_server_class(klass_name: str) -> Optional[EmptyServer]:
     module_path = "gs_manager.servers"
 
     if "." not in klass_name:

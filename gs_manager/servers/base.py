@@ -4,13 +4,13 @@ import os
 import signal
 import time
 from subprocess import DEVNULL, PIPE, STDOUT, CalledProcessError  # nosec
-from typing import Optional, Type, Callable
+from typing import Callable, List, Optional, Type
 
 import click
 import psutil
 
 from gs_manager.command import Config, ServerCommandClass
-from gs_manager.decorators import require
+from gs_manager.decorators import require, single_instance, multi_instance
 from gs_manager.logger import get_logger
 from gs_manager.null import NullServer
 from gs_manager.utils import get_server_path, run_command
@@ -30,6 +30,12 @@ STATUS_PARTIAL_FAIL = 2
 
 
 class BaseServerConfig(Config):
+    multi_instance: bool = False
+
+    _excluded_properties: List[str] = Config._excluded_properties + [
+        "multi_instance",
+    ]
+
     name: str = "game_server"
     user: str = getpass.getuser()
 
@@ -57,7 +63,8 @@ class BaseServerConfig(Config):
                     "type": str,
                     "help": (
                         "Name of gameserver service, should be unique "
-                        "across all gameservers to prevent ID conflicts"
+                        "across all gameservers to prevent ID conflicts. "
+                        "Instance names will be appended to global name"
                     ),
                 },
                 {
@@ -65,7 +72,20 @@ class BaseServerConfig(Config):
                     "type": str,
                     "help": ("User to run the game server as"),
                 },
-            ]
+            ],
+            "instance_enabled": [
+                {
+                    "param_decls": ("-i", "--current_instance"),
+                    "type": str,
+                    "help": "Current instance to run commands against.",
+                },
+                {
+                    "param_decls": ("-p", "--parallel"),
+                    "is_flag": True,
+                    "help": "Used in conjuntion with -ci @all to run all "
+                    "subcommands in parallel",
+                },
+            ],
         }
 
 
@@ -73,13 +93,18 @@ class EmptyServer(NullServer):
     """ Empty game server with no commands"""
 
     name: str = "empty"
-    config: Config
+
+    _config: Config
 
     config_class: Optional[Type[Config]] = None
     _logger: Optional[logging.getLoggerClass()] = None
 
     def __init__(self, config: Config):
-        self.config = config
+        self._config = config
+
+    @property
+    def config(self) -> Config:
+        return self._config
 
     @property
     def context(self) -> click.Context:
@@ -96,8 +121,26 @@ class BaseServer(EmptyServer):
     """ Simple game server with common core commands"""
 
     name: str = "base"
+    supports_multi_instance: bool = False
+
     config_class: Optional[Type[Config]] = BaseServerConfig
-    config: BaseServerConfig
+    _config: BaseServerConfig
+
+    @property
+    def config(self) -> BaseServerConfig:
+        return self._config.current_instance
+
+    def set_instance(
+        self, instance_name: str, multi_instance: bool = False
+    ) -> None:
+        self._config.instance_name = instance_name
+        self._config.multi_instance = multi_instance
+
+    @property
+    def server_name(self) -> str:
+        if self.config.parent is None:
+            return self.config.name
+        return f"{self.config.parent.name}_{self.config.name}"
 
     def _get_pid_filename(self):
         return ".pid_file"
@@ -309,7 +352,21 @@ class BaseServer(EmptyServer):
         if pid is not None:
             os.kill(pid, signal.SIGKILL)
 
+    @multi_instance
+    @click.command(cls=ServerCommandClass)
+    @click.pass_obj
+    def print_config(self, *args, **kwargs):
+        """ Debug tool to just print out your server config """
+
+        config_dict = self.config.__dict__
+        if "instance_overrides" in config_dict:
+            config_dict.pop("instance_overrides")
+
+        self.logger.info(f"Config for {self.server_name}")
+        self.logger.info(config_dict)
+
     @require("start_command")
+    @multi_instance
     @click.command(cls=ServerCommandClass)
     @click.pass_obj
     def status(self, *args, **kwargs):
@@ -332,6 +389,7 @@ class BaseServer(EmptyServer):
             return STATUS_FAILED
 
     @require("start_command")
+    @multi_instance
     @click.command(cls=ServerCommandClass)
     @click.option(
         "--no-verify",
@@ -439,6 +497,7 @@ class BaseServer(EmptyServer):
             return STATUS_SUCCESS
         return self._startup_check()
 
+    @multi_instance
     @click.command()
     @click.option(
         "-f",
@@ -515,6 +574,7 @@ class BaseServer(EmptyServer):
             self.logger.warning(f"{self.config.name} is not running")
             return STATUS_FAILED
 
+    @multi_instance
     @click.command()
     @click.option(
         "-f",
@@ -549,6 +609,7 @@ class BaseServer(EmptyServer):
             )
         return self.invoke(self.start, no_verify=no_verify, foreground=False)
 
+    @single_instance
     @click.command(cls=ServerCommandClass)
     @click.option(
         "-f",

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Union
 
 import click
 
@@ -32,7 +33,12 @@ class ServerClass(click.ParamType):
             "inherits from gs_manager.servers.EmptyServer"
         )
 
-    def convert(self, value, param, ctx) -> Server:
+    def convert(
+        self, value: Union[str, Server], param: str, ctx: click.Context
+    ) -> Server:
+        if isinstance(value, Server):
+            return value
+
         from gs_manager.servers import get_server_class
 
         klass = get_server_class(value)

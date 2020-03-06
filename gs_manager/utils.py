@@ -1,3 +1,5 @@
+import contextlib
+import io
 import os
 import re
 import shlex
@@ -114,3 +116,11 @@ def run_command(command, redirect_output=True, return_process=False, **kwargs):
         raise subprocess.CalledProcessError(
             processes[-1].returncode, command, stdout
         )
+
+
+@contextlib.contextmanager
+def surpress_stdout():
+    save_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    yield
+    sys.stdout = save_stdout

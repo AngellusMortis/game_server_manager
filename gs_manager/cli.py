@@ -74,10 +74,13 @@ def main(
         server: EmptyServer = context.obj
         config: Config = server.config
 
-        logger.debug("Initial Server Config:")
+        logger.debug("Main Server Config:")
         logger.debug(config.__dict__)
 
-        add_global_options(server, logger)
+        for name, instance_config in config.instances.items():
+            logger.debug(f"Instance Server Config ({name}):")
+            logger.debug(instance_config.__dict__)
+
         add_subcommands(server, logger)
     else:
         config: Config = context.obj
@@ -89,11 +92,17 @@ def main(
         config.save_config()
 
 
-def add_global_options(server: EmptyServer, logger: logging.getLoggerClass()):
+def add_global_options(
+    server: EmptyServer,
+    command: click.Command,
+    logger: logging.getLoggerClass(),
+):
     options = server.config.global_options["all"]
+    if server.supports_multi_instance:
+        options += server.config.global_options["instance_enabled"]
 
     for option in options:
-        main.params.append(click.Option(**option))
+        command.params.append(click.Option(**option))
 
     logger.debug("Found global options:")
     logger.debug(options)
@@ -104,6 +113,8 @@ def add_subcommands(server: EmptyServer, logger: logging.getLoggerClass()):
     subcommands = []
     for member in all_members:
         if isinstance(member[1], click.Command):
+            add_global_options(server, member[1], logger)
+
             main.add_command(member[1], name=member[0])
             subcommands.append(member[0])
     logger.debug("Found subcommands:")
