@@ -21,6 +21,7 @@ STEAM_PUBLISHED_FILES_API = "https://api.steampowered.com/ISteamRemoteStorage/Ge
 class RconServerConfig(SteamServerConfig):
     rcon_multi_part: bool = False
     rcon_password: Optional[str] = None
+    rcon_ip: str = "127.0.0.1"
     rcon_port: Optional[int] = None
     rcon_timeout: int = 10
 
@@ -28,6 +29,11 @@ class RconServerConfig(SteamServerConfig):
     def global_options(self):
         global_options = super().global_options.copy()
         all_options = [
+            {
+                "param_decls": ("--rcon-ip",),
+                "type": int,
+                "help": "IP RCON service runs on",
+            },
             {
                 "param_decls": ("--rcon-port",),
                 "type": int,
@@ -67,16 +73,14 @@ class RconServer(SteamServer):
 
     def is_rcon_enabled(self):
         return (
-            self.config.rcon_port is not None
+            self.config.rcon_ip is not None
+            and self.config.rcon_port is not None
             and self.config.rcon_password is not None
         )
 
     def _get_rcon_args(self):
         args = {
-            "address": (
-                self.config.steam_query_ip,
-                int(self.config.rcon_port),
-            ),
+            "address": (self.config.rcon_ip, int(self.config.rcon_port),),
             "password": self.config.rcon_password,
             "timeout": self.config.rcon_timeout,
             "multi_part": self.config.rcon_multi_part,

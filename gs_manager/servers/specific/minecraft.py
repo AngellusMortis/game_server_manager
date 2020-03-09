@@ -6,7 +6,6 @@ from typing import Dict, List, Optional, Tuple, Type
 import click
 import click_spinner
 from mcstatus import MinecraftServer as MCServer
-from pygtail import Pygtail
 
 from gs_manager.command import Config, ServerCommandClass
 from gs_manager.command.types import KeyValuePairs
