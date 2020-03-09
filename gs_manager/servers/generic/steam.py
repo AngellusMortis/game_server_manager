@@ -38,7 +38,7 @@ def _enqueue_output(out, queue):
 class SteamServerConfig(BaseServerConfig):
     steamcmd_path: str = "steamcmd"
     steam_query_ip: str = "127.0.0.1"
-    steam_query_port: int = None
+    steam_query_port: Optional[int] = None
     workshop_id: int = None
     workshop_items: List[str] = []
     steam_username: str = None
@@ -98,23 +98,28 @@ class SteamServer(BaseServer):
         return super().config
 
     @property
-    def server(self) -> ServerQuerier:
-        if self._servers.get(self.server_name) is None:
-            self._servers[self.server_name] = ServerQuerier(
-                (
-                    self.config.steam_query_ip,
-                    int(self.config.steam_query_port),
-                ),
-            )
-        return self._servers[self.server_name]
+    def server(self) -> Optional[ServerQuerier]:
+        if self.is_query_enabled():
+            if self._servers.get(self.server_name) is None:
+                self._servers[self.server_name] = ServerQuerier(
+                    (
+                        self.config.steam_query_ip,
+                        int(self.config.steam_query_port),
+                    ),
+                )
+            return self._servers[self.server_name]
+        return None
 
-    def is_accessible(self, instance_name=None):
-        try:
-            self.server.ping()
-        except NoResponseError:
-            return False
-
+    def is_accessible(self) -> bool:
+        if self.is_query_enabled():
+            try:
+                self.server.ping()
+            except NoResponseError:
+                return False
         return True
+
+    def is_query_enabled(self) -> bool:
+        return self.config.steam_query_port is not None
 
     def _parse_line(self, bar, line):
         step_name = line.group("step_name")
@@ -335,22 +340,27 @@ class SteamServer(BaseServer):
 
         if self.is_running():
             try:
-                server_info = self.server.info()
-                self.logger.success("{} is running".format(self.server_name))
-                self.logger.info(f"server name: {server_info['server_name']}")
-                self.logger.info(f"map: {server_info['map']}")
-                self.logger.info(f"game: {server_info['game']}")
-                self.logger.info(
-                    f"players: {server_info['player_count']}/"
-                    f"{server_info['max_players']} ({server_info['bot_count']}"
-                    " bots)"
-                )
-                self.logger.info(f"server type: {server_info['server_type']}")
-                self.logger.info(
-                    f"password protected: {server_info['password_protected']}"
-                )
-                self.logger.info(f"VAC: {server_info['vac_enabled']}")
-                self.logger.info(f"version: {server_info['version']}")
+                if self.is_query_enabled():
+                    server_info = self.server.info()
+                    self.logger.success(f"{self.server_name} is running")
+                    self.logger.info(
+                        f"server name: {server_info['server_name']}"
+                    )
+                    self.logger.info(f"map: {server_info['map']}")
+                    self.logger.info(f"game: {server_info['game']}")
+                    self.logger.info(
+                        f"players: {server_info['player_count']}/"
+                        f"{server_info['max_players']} "
+                        f"({server_info['bot_count']} bots)"
+                    )
+                    self.logger.info(
+                        f"server type: {server_info['server_type']}"
+                    )
+                    self.logger.info(
+                        f"password protected: {server_info['password_protected']}"
+                    )
+                    self.logger.info(f"VAC: {server_info['vac_enabled']}")
+                    self.logger.info(f"version: {server_info['version']}")
                 return STATUS_SUCCESS
             except NoResponseError:
                 self.logger.error(
@@ -496,6 +506,7 @@ class SteamServer(BaseServer):
     ) -> int:
         """ downloads Steam workshop items """
 
+        was_running = False
         if not force:
             needs_update = self._check_steam_for_update(
                 self.config.workshop_id, "public"
@@ -507,7 +518,6 @@ class SteamServer(BaseServer):
                 self._start_servers(restart, was_running)
                 return STATUS_SUCCESS
 
-        was_running = False
         if not allow_run:
             was_running = self.is_running(check_all=True)
             if was_running:

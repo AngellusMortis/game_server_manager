@@ -104,6 +104,8 @@ class BaseConfig:
             has_content = False
         elif isinstance(value, Iterable) and len(value) == 0:
             has_content = False
+        elif isinstance(value, bool) and value == False:
+            has_content = False
         return value, has_content
 
     def _update_config_from_dict(
@@ -119,7 +121,7 @@ class BaseConfig:
             value, has_content = self.validate(key, value)
 
             expected_type = self.get_type_for_param(key)
-            if (ignore_bool and expected_type == bool) or has_content:
+            if (expected_type == bool and not ignore_bool) or has_content:
                 setattr(self, key, value)
 
     def _update_config_from_context(self, context: click.Context) -> None:
