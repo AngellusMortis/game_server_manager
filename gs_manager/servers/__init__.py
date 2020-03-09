@@ -17,7 +17,7 @@ from gs_manager.servers.generic import (
     RconServer,
 )
 
-# from gs_manager.servers.specific import MinecraftServer
+from gs_manager.servers.specific import MinecraftServer, StarboundServer
 
 __all__ = [
     "get_servers",
@@ -27,7 +27,8 @@ __all__ = [
     "JavaServer",
     "SteamServer",
     "RconServer",
-    # "MinecraftServer",
+    "MinecraftServer",
+    "StarboundServer",
     "STATUS_FAILED",
     "STATUS_PARTIAL_FAIL",
     "STATUS_SUCCESS",

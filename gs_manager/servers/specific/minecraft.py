@@ -523,9 +523,7 @@ class MinecraftServer(JavaServer):
         is_flag=True,
         help="Force enable even if server is running",
     )
-    @click.argument(
-        "minecraft_version", type=str, help="Minecraft version to enable"
-    )
+    @click.argument("minecraft_version", type=str)
     @click.pass_obj
     def enable(
         self, force: bool, minecraft_version: str, *args, **kwargs
