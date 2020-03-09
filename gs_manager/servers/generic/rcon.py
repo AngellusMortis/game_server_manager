@@ -184,7 +184,12 @@ class RconServer(SteamServer):
         """  # noqa
 
         if self.is_running():
-            args = self._get_rcon_args()
-            shell(args["address"], args["password"], args["multi_part"])
+            if self.is_rcon_enabled():
+                args = self._get_rcon_args()
+                shell(args["address"], args["password"], args["multi_part"])
+            else:
+                self.logger.warning(
+                    f"{self.server_name} does not have RCON enabled"
+                )
         else:
             raise click.ClickException(f"{self.server_name} is not running")

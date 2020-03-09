@@ -509,6 +509,7 @@ class BaseServer(EmptyServer):
                 "stdin": DEVNULL,
                 "stderr": STDOUT,
                 "stdout": PIPE,
+                "start_new_session": True,
             }
         elif foreground:
             popen_kwargs = {
