@@ -35,6 +35,7 @@ class MinecraftServerConfig(JavaServerConfig):
     stop_command: str = "stop"
     say_command: str = "say {}"
     save_command: str = "save-all"
+    server_log: str = os.path.join("logs", "latest.log")
 
     start_memory: int = 1204
     max_memory: int = 4096
@@ -145,11 +146,9 @@ class MinecraftServer(JavaServer):
 
         return latest, versions
 
-    def _process_log_file(self, log_file: str) -> bool:
-        offset_file = ".log_offset"
-        if os.path.isfile(offset_file):
-            os.remove(offset_file)
-        tail = Pygtail(log_file, offset_file=offset_file)
+    def _process_log_file(self) -> bool:
+        tail = self.tail_file()
+
         loops_since_check = 0
         processing = True
         done_match = False
@@ -179,17 +178,16 @@ class MinecraftServer(JavaServer):
                     self.logger.error(f"{self.server_name} failed to start")
                     processing = False
                 time.sleep(1)
-        if os.path.isfile(offset_file):
-            os.remove(offset_file)
+
+        self.delete_offset()
         return done_match
 
     def _startup_check(self) -> int:
-        log_file = get_server_path(["logs", "latest.log"])
         self.logger.debug("wait for server to start initalizing...")
 
         mtime = 0
         try:
-            mtime = os.stat(log_file).st_mtime
+            mtime = os.stat(self.config.server_log).st_mtime
         except FileNotFoundError:
             pass
 
@@ -197,19 +195,21 @@ class MinecraftServer(JavaServer):
         wait_left = 5
         while new_mtime == mtime and wait_left > 0:
             try:
-                mtime = os.stat(log_file).st_mtime
+                mtime = os.stat(self.config.server_log).st_mtime
             except FileNotFoundError:
                 pass
             wait_left -= 0.1
             time.sleep(0.1)
 
-        if os.path.isfile(log_file):
-            if self._process_log_file(log_file):
+        if os.path.isfile(self.config.server_log):
+            if self._process_log_file():
                 self.logger.info(
                     "\nverifying Minecraft server is up...", nl=False,
                 )
                 return super()._startup_check()
-        raise click.ClickException(f"could not find log file: {log_file}")
+        raise click.ClickException(
+            f"could not find log file: {self.config.server_log}"
+        )
 
     def is_accessible(self) -> bool:
         try:
@@ -408,13 +408,9 @@ class MinecraftServer(JavaServer):
         """ runs console command """
 
         tail = None
-        log_file = get_server_path(["logs", "latest.log"])
-        if do_print and os.path.isfile(log_file):
+        if do_print and os.path.isfile(self.config.server_log):
             self.logger.debug("reading log...")
-            offset_file = ".log_offset"
-            if os.path.isfile(offset_file):
-                os.remove(offset_file)
-            tail = Pygtail(log_file, offset_file=offset_file)
+            tail = self.tail_file()
             tail.readlines()
 
         status = self.invoke(
@@ -432,8 +428,7 @@ class MinecraftServer(JavaServer):
                     message = match.group("message")
                     if not message == "":
                         self.logger.info(message)
-            if os.path.isfile(offset_file):
-                os.remove(offset_file)
+            self.delete_offset()
         return status
 
     @single_instance

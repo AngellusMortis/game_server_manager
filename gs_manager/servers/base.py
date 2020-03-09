@@ -4,10 +4,11 @@ import os
 import signal
 import time
 from subprocess import DEVNULL, PIPE, STDOUT, CalledProcessError  # nosec
-from typing import Callable, List, Optional, Type, Union
+from typing import Callable, Iterable, List, Optional, Type, Union
 
 import click
 import psutil
+from pygtail import Pygtail
 
 from gs_manager.command import Config, ServerCommandClass
 from gs_manager.decorators import multi_instance, require, single_instance
@@ -38,6 +39,7 @@ class BaseServerConfig(Config):
 
     name: str = "game_server"
     user: str = getpass.getuser()
+    server_log: Optional[str] = None
 
     # start command config
     wait_start: int = 3
@@ -74,6 +76,11 @@ class BaseServerConfig(Config):
                     "param_decls": ("-u", "--user"),
                     "type": str,
                     "help": ("User to run the game server as"),
+                },
+                {
+                    "param_decls": ("-l", "--server-log"),
+                    "type": str,
+                    "help": ("Path to server log"),
                 },
             ],
             "instance_enabled": [
@@ -368,6 +375,19 @@ class BaseServer(EmptyServer):
         if pid is not None:
             os.kill(pid, signal.SIGKILL)
 
+    def delete_offset(self):
+        offset_file = get_server_path(".log_offset")
+        if os.path.isfile(offset_file):
+            os.remove(offset_file)
+
+    def tail_file(self, remove_offset: bool = True) -> Iterable:
+        log_file = get_server_path(self.config.server_log)
+        offset_file = get_server_path(".log_offset")
+        if remove_offset:
+            self.delete_offset()
+
+        return Pygtail(log_file, offset_file=offset_file)
+
     @multi_instance
     @click.command(cls=ServerCommandClass)
     @click.pass_obj
@@ -526,7 +546,7 @@ class BaseServer(EmptyServer):
         return self._startup_check()
 
     @multi_instance
-    @click.command()
+    @click.command(cls=ServerCommandClass)
     @click.option(
         "-f",
         "--force",
@@ -605,7 +625,7 @@ class BaseServer(EmptyServer):
             return STATUS_FAILED
 
     @multi_instance
-    @click.command()
+    @click.command(cls=ServerCommandClass)
     @click.option(
         "-f",
         "--force",
@@ -662,6 +682,40 @@ class BaseServer(EmptyServer):
         self.run_command(
             f"{editor} {file_path}", redirect_output=False,
         )
+        return STATUS_SUCCESS
+
+    @multi_instance
+    @click.command(cls=ServerCommandClass)
+    @click.option(
+        "-f", "--follow", is_flag=True, help="Follow log file",
+    )
+    @click.option(
+        "-n",
+        "--num",
+        default=20,
+        type=int,
+        help="Number of lines to list, use -1 to list all",
+    )
+    @click.pass_obj
+    def tail(self, follow: bool, num: int, *args, **kwargs) -> int:
+        """ edits a server file with your default editor """
+
+        self.delete_offset()
+
+        while True:
+            tail = self.tail_file(remove_offset=False)
+            lines = tail.readlines()
+            if num > 0:
+                lines = lines[-num:]
+
+            for line in lines:
+                self.logger.info(line.strip())
+
+            if not follow:
+                break
+
+            time.sleep(1)
+
         return STATUS_SUCCESS
 
 

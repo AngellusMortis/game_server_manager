@@ -48,7 +48,7 @@ class SteamServerConfig(BaseServerConfig):
 
     @property
     def global_options(self):
-        global_options = super().global_options
+        global_options = super().global_options.copy()
         all_options = [
             {
                 "param_decls": ("--steamcmd-path",),
@@ -357,10 +357,13 @@ class SteamServer(BaseServer):
                         f"server type: {server_info['server_type']}"
                     )
                     self.logger.info(
-                        f"password protected: {server_info['password_protected']}"
+                        "password protected: "
+                        f"{server_info['password_protected']}"
                     )
                     self.logger.info(f"VAC: {server_info['vac_enabled']}")
                     self.logger.info(f"version: {server_info['version']}")
+                else:
+                    self.logger.success(f"{self.config.name} is running")
                 return STATUS_SUCCESS
             except NoResponseError:
                 self.logger.error(
