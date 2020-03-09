@@ -4,7 +4,7 @@ import os
 import signal
 import time
 from subprocess import DEVNULL, PIPE, STDOUT, CalledProcessError  # nosec
-from typing import Callable, List, Optional, Type
+from typing import Callable, List, Optional, Type, Union
 
 import click
 import psutil
@@ -310,9 +310,7 @@ class BaseServer(EmptyServer):
     def get_pid(self) -> int:
         return self._read_pid_file()
 
-    def is_running(self, delete_pid: bool = True) -> bool:
-        """ checks if gameserver is running """
-
+    def _is_running_single(self, delete_pid: bool = True) -> bool:
         pid = self.get_pid()
         if pid is not None:
             try:
@@ -323,6 +321,25 @@ class BaseServer(EmptyServer):
             else:
                 return True
         return False
+
+    def is_running(
+        self, check_all: bool = False, delete_pid: bool = True
+    ) -> Union[bool, List[bool]]:
+        """ checks if gameserver is running """
+
+        if check_all and len(self.config.all_instance_names) > 0:
+            current_instance = self.config.instance_name
+            multi_instance = self.config.multi_instance
+
+            is_running = []
+            for instance_name in self.config.all_instance_names:
+                self.set_instance(instance_name, True)
+                is_running.append(self._is_running_single())
+
+            self.set_instance(current_instance, multi_instance)
+            return is_running
+
+        return self._is_running_single()
 
     def is_accessible(self) -> bool:
         return self.is_running(delete_pid=False)

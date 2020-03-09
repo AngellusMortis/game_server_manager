@@ -39,6 +39,11 @@ class ServerClass(click.ParamType):
         if isinstance(value, Server):
             return value
 
+        if value == "null":
+            from gs_manager.servers.base import NullServer
+
+            return Server("null", NullServer)
+
         from gs_manager.servers import get_server_class
 
         klass = get_server_class(value)

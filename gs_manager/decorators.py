@@ -75,6 +75,8 @@ def _instance_wrapper(command: click.Command, multi_callback: Callable):
         context = click.get_current_context()
         instance_name = context.params.get("current_instance")
         server: BaseServer = context.obj
+        if "current_instance" in kwargs:
+            instance_name = instance_name.pop("current_instance")
 
         if instance_name is not None:
             server.logger.debug(

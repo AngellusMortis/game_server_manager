@@ -10,8 +10,9 @@ from gs_manager.servers.base import (
     BaseServer,
     EmptyServer,
 )
-from gs_manager.servers.generic import JavaServer, ScreenServer
-from gs_manager.servers.specific import MinecraftServer, MinecraftServerConfig
+from gs_manager.servers.generic import JavaServer, ScreenServer, SteamServer
+
+# from gs_manager.servers.specific import MinecraftServer
 
 __all__ = [
     "get_servers",
@@ -19,8 +20,8 @@ __all__ = [
     "BaseServer",
     "ScreenServer",
     "JavaServer",
-    "MinecraftServerConfig",
-    "MinecraftServer",
+    "SteamServer",
+    # "MinecraftServer",
     "STATUS_FAILED",
     "STATUS_PARTIAL_FAIL",
     "STATUS_SUCCESS",

@@ -2,7 +2,17 @@ from __future__ import annotations
 
 import inspect
 import os
-from typing import Any, Callable, Dict, List, Optional, Union, get_type_hints
+from collections.abc import Iterable
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    get_type_hints,
+)
 
 import click
 import yaml
@@ -84,11 +94,17 @@ class BaseConfig:
             return self._config_types[param]
         return None
 
-    def validate(self, param: str, value: Any) -> Any:
+    def validate(self, param: str, value: Any) -> Tuple[Any, bool]:
         if param in self._validators:
             for validator in self._validators[param]:
                 value = validator.validate(value)
-        return value
+
+        has_content = True
+        if value is None:
+            has_content = False
+        elif isinstance(value, Iterable) and len(value) == 0:
+            has_content = False
+        return value, has_content
 
     def _update_config_from_dict(
         self, config_dict: dict, ignore_unknown=False, ignore_bool=False
@@ -100,10 +116,10 @@ class BaseConfig:
             elif key not in self._config_options or value is None:
                 continue
 
-            value = self.validate(key, value)
+            value, has_content = self.validate(key, value)
 
             expected_type = self.get_type_for_param(key)
-            if not ignore_bool or (expected_type != bool or value):
+            if (ignore_bool and expected_type == bool) or has_content:
                 setattr(self, key, value)
 
     def _update_config_from_context(self, context: click.Context) -> None:
@@ -121,7 +137,7 @@ class BaseConfig:
         server = context.params["server_type"].server
 
         server_config = self
-        if server.config_class is not None:
+        if hasattr(server, "config_class") and server.config_class is not None:
             server_config = server.config_class(self._file_path)
             server_config.update_config(context)
         server._config = server_config
@@ -290,7 +306,7 @@ class Config(BaseConfig):
             config_dict = yaml.safe_load(f)
 
         if config_dict is not None:
-            instance_configs = []
+            instance_configs = {}
             # reset all of the instance configs
             self._instances = {}
 

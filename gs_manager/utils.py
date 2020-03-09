@@ -31,9 +31,14 @@ def to_snake_case(name: str) -> str:
 def get_server_path(path: Union[str, List[str]]) -> str:
     context = click.get_current_context()
 
+    if hasattr(context.obj, "config"):
+        server_path = context.obj.config.server_path
+    else:
+        server_path = "./"
+
     if isinstance(path, str):
-        return os.path.join(context.obj.config.server_path, path)
-    return os.path.join(context.obj.config.server_path, *path)
+        return os.path.join(server_path, path)
+    return os.path.join(server_path, *path)
 
 
 def get_json(url: str) -> dict:
