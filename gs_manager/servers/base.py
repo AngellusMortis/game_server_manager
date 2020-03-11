@@ -2,15 +2,24 @@ import getpass
 import logging
 import os
 import signal
+import tarfile
 import time
+from datetime import datetime
+from distutils.dir_util import copy_tree
+from shutil import copyfile, rmtree
 from subprocess import DEVNULL, PIPE, STDOUT, CalledProcessError  # nosec
-from typing import Callable, Iterable, List, Optional, Type, Union
+from typing import Callable, Dict, Iterable, List, Optional, Type, Union
 
 import click
 import psutil
 from pygtail import Pygtail
 
-from gs_manager.command import Config, ServerCommandClass
+from gs_manager.command import DEFAULT_CONFIG, Config, ServerCommandClass
+from gs_manager.command.validators import (
+    DirectoryConfigType,
+    GenericConfigType,
+    ServerDirectoryType,
+)
 from gs_manager.decorators import multi_instance, require, single_instance
 from gs_manager.logger import get_logger
 from gs_manager.null import NullServer
@@ -32,6 +41,14 @@ STATUS_PARTIAL_FAIL = 2
 
 class BaseServerConfig(Config):
     multi_instance: bool = False
+
+    _validators: Dict[str, List[GenericConfigType]] = {
+        **Config._validators,
+        **{
+            "backup_directory": [ServerDirectoryType],
+            "backup_location": [DirectoryConfigType],
+        },
+    }
 
     _excluded_properties: List[str] = Config._excluded_properties + [
         "multi_instance",
@@ -58,6 +75,11 @@ class BaseServerConfig(Config):
 
     # say command config
     say_command: str = None
+
+    # backup options
+    backup_directory: str = ""
+    backup_location: Optional[str] = None
+    backup_days: int = 7
 
     @property
     def global_options(self):
@@ -152,6 +174,12 @@ class BaseServer(EmptyServer):
         if self.config.parent is None:
             return self.config.name
         return f"{self.config.parent.name}_{self.config.name}"
+
+    @property
+    def backup_name(self):
+        if self.config.name is None:
+            return self.config.name
+        return self.config.name
 
     def _get_pid_filename(self) -> str:
         if self.config.parent is None:
@@ -717,6 +745,148 @@ class BaseServer(EmptyServer):
 
             time.sleep(1)
 
+        return STATUS_SUCCESS
+
+    @require("backup_directory")
+    @require("backup_location")
+    @single_instance
+    @click.command(cls=ServerCommandClass)
+    @click.option(
+        "--backup-location",
+        type=click.Path(),
+        help="Location to store backup files",
+    )
+    @click.option(
+        "--backup-directory",
+        type=click.Path(),
+        help="Directory realtive to server-path to backup",
+    )
+    @click.option(
+        "--backup-days",
+        type=int,
+        help="Number of days worth of backups to keep",
+    )
+    @click.pass_obj
+    def backup(self, *args, **kwargs) -> int:
+        """ edits a server file with your default editor """
+
+        backup_folder = os.path.join(self.config.backup_location, "backups")
+        timestamp = (
+            datetime.now().isoformat(timespec="minutes").replace(":", "-")
+        )
+        backup_file = f"{self.backup_name}_{timestamp}.tar.gz"
+
+        os.makedirs(backup_folder, exist_ok=True)
+
+        self.logger.info(f"Making server backup ({backup_file})...")
+        with tarfile.open(
+            os.path.join(backup_folder, backup_file), "w:gz"
+        ) as tar:
+            tar.add(
+                get_server_path(self.config.backup_directory),
+                arcname=self.config.backup_directory,
+            )
+            tar.add(self.config.config_path, arcname=DEFAULT_CONFIG)
+
+        old_backups = []
+        now = time.time()
+        for backup in os.listdir(backup_folder):
+            abs_path = os.path.join(backup_folder, backup)
+            if os.stat(abs_path).st_mtime < now - 7 * 86400:
+                old_backups.append(abs_path)
+
+        if len(old_backups) > 0:
+            self.logger.info(f"Deleting {len(old_backups)} old backups...")
+
+            for backup in old_backups:
+                os.remove(backup)
+
+        return STATUS_SUCCESS
+
+    @require("backup_directory")
+    @require("backup_location")
+    @single_instance
+    @click.command(cls=ServerCommandClass)
+    @click.option(
+        "--backup-location",
+        type=click.Path(),
+        help="Location to store backup files",
+    )
+    @click.option(
+        "--backup-directory",
+        type=click.Path(),
+        help="Directory realtive to server-path to backup",
+    )
+    @click.option("--list-backups", is_flag=True, help="List backup files")
+    @click.option(
+        "--num",
+        type=int,
+        default=10,
+        help="Number of backups to list. Use -1 to list all",
+    )
+    @click.argument("backup_num", default=0, type=int)
+    @click.pass_obj
+    def restore(
+        self, list_backups: bool, num: int, backup_num: int, *args, **kwargs
+    ) -> int:
+        """ edits a server file with your default editor """
+
+        backup_folder = os.path.join(self.config.backup_location, "backups")
+        restore_folder = os.path.join(self.config.backup_location, "restore")
+        backups = []
+
+        if os.path.isdir(backup_folder):
+            for backup in os.listdir(backup_folder):
+                if backup.startswith(self.backup_name):
+                    backups.append(backup)
+            backups = sorted(backups)
+
+        if list_backups:
+            if num >= 0:
+                backups = backups[:num]
+
+            for index, backup in enumerate(backups):
+                self.logger.info(f"{index:2}: {backup}")
+            return STATUS_SUCCESS
+
+        if backup_num > len(backups):
+            self.logger.error(f"Backup {backup_num} does not exist")
+            return STATUS_FAILED
+
+        if self.is_running():
+            self.logger.error(f"{self.server_name} is still running")
+            return STATUS_FAILED
+
+        self.logger.info("Cleaning up previous restore...")
+        for old_backup in os.listdir(self.config.backup_location):
+            if old_backup.endswith(".tar.gz"):
+                os.remove(
+                    os.path.join(self.config.backup_location, old_backup)
+                )
+
+        if os.path.isdir(restore_folder):
+            rmtree(restore_folder)
+        os.mkdir(restore_folder)
+
+        self.logger.info("Extacting backup...")
+        backup_file = os.path.join(
+            self.config.backup_location, backups[backup_num]
+        )
+        copyfile(os.path.join(backup_folder, backups[backup_num]), backup_file)
+
+        with tarfile.open(backup_file) as tar:
+            tar.extractall(path=restore_folder)
+
+        config_file = os.path.join(restore_folder, DEFAULT_CONFIG)
+        if os.path.isfile(config_file):
+            os.remove(config_file)
+
+        self.logger.info("Restoring backup...")
+        copy_tree(
+            os.path.join(restore_folder, self.config.backup_directory),
+            get_server_path(self.config.backup_directory),
+            preserve_times=1,
+        )
         return STATUS_SUCCESS
 
 

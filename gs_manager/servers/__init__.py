@@ -17,7 +17,9 @@ from gs_manager.servers.generic import (
     RconServer,
 )
 
-from gs_manager.servers.specific import MinecraftServer, StarboundServer
+from gs_manager.servers.specific import (
+    MinecraftServer,
+)  # , StarboundServer <- server always crashes :(
 
 __all__ = [
     "get_servers",
@@ -28,7 +30,7 @@ __all__ = [
     "SteamServer",
     "RconServer",
     "MinecraftServer",
-    "StarboundServer",
+    # "StarboundServer",
     "STATUS_FAILED",
     "STATUS_PARTIAL_FAIL",
     "STATUS_SUCCESS",

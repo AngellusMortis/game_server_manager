@@ -21,6 +21,7 @@ class StarboundServerConfig(RconServerConfig):
     steam_requires_login: bool = True
     workshop_id: int = 211820
     server_log: str = os.path.join("storage", "starbound_server.log")
+    backup_directory: str = "storage"
 
     _excluded_properties: List[str] = RconServerConfig._excluded_properties + [
         "starbound"
@@ -81,10 +82,11 @@ class StarboundServerConfig(RconServerConfig):
                 ["storage", "starbound_server.config"]
             )
             if not os.path.isfile(config_path):
-                raise click.ClickException(
+                self.logger.warn(
                     "could not find starbound_server.config for "
                     "Starbound server"
                 )
+                return {}
 
             with open(config_path) as config_file:
                 self._starbound_config = json.load(config_file)

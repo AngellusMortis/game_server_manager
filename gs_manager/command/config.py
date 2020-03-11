@@ -198,6 +198,10 @@ class Config(BaseConfig):
         return config_dict
 
     @property
+    def config_path(self):
+        return self._file_path
+
+    @property
     def all_instance_names(self) -> str:
         return self._instances.keys()
 
