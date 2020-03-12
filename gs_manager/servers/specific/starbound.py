@@ -2,8 +2,6 @@ import json
 import os
 from typing import List, Optional, Type
 
-import click
-
 from gs_manager.command import Config
 from gs_manager.servers.generic.rcon import RconServer, RconServerConfig
 from gs_manager.utils import get_server_path

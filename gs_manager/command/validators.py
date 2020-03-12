@@ -17,7 +17,7 @@ class DirectoryConfigType(GenericConfigType):
     @staticmethod
     def validate(value) -> str:
         if not os.path.isdir(value):
-            raise ValueError("Directory does not exist")
+            raise ValueError(f"{value} does not exist")
 
         return value
 
@@ -39,7 +39,7 @@ class ServerFileType(GenericConfigType):
             return value
 
         if not os.path.isfile(get_server_path(value)):
-            raise ValueError("File does not exist")
+            raise ValueError(f"{value} does not exist")
 
         return value
 
@@ -55,7 +55,7 @@ class ServerDirectoryType(GenericConfigType):
             return value
 
         if not os.path.isdir(get_server_path(value)):
-            raise ValueError("File does not exist")
+            raise ValueError(f"{value} does not exist")
 
         return value
 

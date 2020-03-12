@@ -58,6 +58,8 @@ class ServerClass(click.ParamType):
 
 
 class KeyValuePairs(click.ParamType):
+    name = "key_value_pairs"
+
     def convert(
         self, values: Union[str, List[str]], param: str, ctx: click.Context
     ) -> Dict[str, str]:

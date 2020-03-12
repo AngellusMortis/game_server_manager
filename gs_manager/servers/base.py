@@ -107,7 +107,7 @@ class BaseServerConfig(Config):
             ],
             "instance_enabled": [
                 {
-                    "param_decls": ("-i", "--current_instance"),
+                    "param_decls": ("-i", "--current-instance"),
                     "type": str,
                     "help": "Current instance to run commands against.",
                 },
@@ -177,9 +177,9 @@ class BaseServer(EmptyServer):
 
     @property
     def backup_name(self):
-        if self.config.name is None:
+        if self.config.parent is None:
             return self.config.name
-        return self.config.name
+        return self.config.parent.name
 
     def _get_pid_filename(self) -> str:
         if self.config.parent is None:

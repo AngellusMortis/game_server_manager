@@ -184,12 +184,13 @@ class SteamServer(BaseServer):
                 while process.poll() is None:
                     time.sleep(1)
 
-    def _check_steam_for_update(self, app_id, branch):
+    def _check_steam_for_update(self, app_id: str, branch: str):
         manifest_file = get_server_path(
             ["steamapps", f"appmanifest_{app_id}.acf"]
         )
 
         if not os.path.isfile(manifest_file):
+            self.logger.debug("No local manifet")
             return True
 
         manifest = None
@@ -211,13 +212,16 @@ class SteamServer(BaseServer):
                 "buildid"
             ]
         except KeyError:
+            self.logger.debug("Failed to parse remote manifest")
             return True
 
+        self.logger.debug(f"current: {manifest['AppState']['buildid']}")
+        self.logger.debug(f"latest: {current_buildid}")
         return manifest["AppState"]["buildid"] != current_buildid
 
     def _get_published_file(self, file_id):
         s = requests.Session()
-        adapter = requests.adapters.HTTPAdapter(max_retries=3)
+        adapter = requests.adapters.HTTPAdapter(max_retries=5)
         s.mount("http://", adapter)
 
         r = s.post(
@@ -228,16 +232,19 @@ class SteamServer(BaseServer):
 
         return r.json()
 
-    def _stop_servers(self, was_running):
+    def _stop_servers(self, was_running, reason: Optional[str] = None):
         current_instance = self.config.instance_name
         multi_instance = self.config.multi_instance
+
+        if reason is None:
+            reason = "Updates found"
 
         if self._command_exists("say_command"):
             self.logger.info("notifying users...")
             self.set_instance(None, False)
             self.invoke(
                 self.say,
-                command_string="Updates found, server restarting in 5 minutes",
+                command_string=f"{reason}. Server restarting in 5 minutes",
                 do_print=False,
                 parallel=True,
             )
@@ -416,7 +423,7 @@ class SteamServer(BaseServer):
         if not force:
             self.logger.info(f"checking for update for {app_id}...")
             needs_update = self._check_steam_for_update(
-                self.config.app_id, "public"
+                str(self.config.app_id), "public"
             )
             if not needs_update:
                 self.logger.success(
@@ -434,7 +441,9 @@ class SteamServer(BaseServer):
                         "is still running"
                     )
                     return STATUS_PARTIAL_FAIL
-                self._stop_servers(was_running)
+                self._stop_servers(
+                    was_running, reason="Updates found for game"
+                )
 
         process = self.run_command(
             (
@@ -512,7 +521,7 @@ class SteamServer(BaseServer):
         was_running = False
         if not force:
             needs_update = self._check_steam_for_update(
-                self.config.workshop_id, "public"
+                str(self.config.workshop_id), "public"
             )
             if not needs_update:
                 self.logger.success(
@@ -530,7 +539,9 @@ class SteamServer(BaseServer):
                         "is still running"
                     )
                     return STATUS_PARTIAL_FAIL
-                self._stop_servers(was_running)
+                self._stop_servers(
+                    was_running, reason="Updates found for workshop app"
+                )
 
         status = self.invoke(
             self.install,
@@ -578,7 +589,16 @@ class SteamServer(BaseServer):
                             workshop_item
                         ]["timeupdated"]
                     )
-                    latest_metadata = self._get_published_file(workshop_item)
+
+                    try:
+                        latest_metadata = self._get_published_file(
+                            workshop_item
+                        )
+                    except requests.HTTPError:
+                        self.logger.error(
+                            "\ncould not query Steam for updates"
+                        )
+                        return STATUS_FAILED
 
                     newest_update_time = int(
                         latest_metadata["response"]["publishedfiledetails"][0][
@@ -589,7 +609,7 @@ class SteamServer(BaseServer):
                     if last_update_time < newest_update_time:
                         mods_to_update.append(workshop_item)
         else:
-            mods_to_update = self.config.workshop_id
+            mods_to_update = self.config.workshop_items
 
         if len(mods_to_update) == 0:
             self.logger.success("all workshop items already up to date")

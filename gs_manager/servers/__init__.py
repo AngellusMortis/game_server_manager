@@ -12,12 +12,12 @@ from gs_manager.servers.base import (
 )
 from gs_manager.servers.generic import (
     JavaServer,
+    RconServer,
     ScreenServer,
     SteamServer,
-    RconServer,
 )
-
 from gs_manager.servers.specific import (
+    ArkServer,
     MinecraftServer,
 )  # , StarboundServer <- server always crashes :(
 
@@ -29,6 +29,7 @@ __all__ = [
     "JavaServer",
     "SteamServer",
     "RconServer",
+    "ArkServer",
     "MinecraftServer",
     # "StarboundServer",
     "STATUS_FAILED",

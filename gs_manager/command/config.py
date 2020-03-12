@@ -104,7 +104,7 @@ class BaseConfig:
             has_content = False
         elif isinstance(value, Iterable) and len(value) == 0:
             has_content = False
-        elif isinstance(value, bool) and value == False:
+        elif isinstance(value, bool) and value is False:
             has_content = False
         return value, has_content
 
@@ -169,7 +169,11 @@ class Config(BaseConfig):
         "all_instance_names",
         "instance_name",
         "current_instance",
+        "config_path",
     ]
+
+    _instance_properties: List[str] = []
+    _extra_attr: List[str] = []
 
     def __init__(
         self,
@@ -284,6 +288,13 @@ class Config(BaseConfig):
 
         for option in self._config_options:
             setattr(InstanceConfig, option, None)
+
+        for name in self._instance_properties:
+            prop_method = getattr(self.__class__, name).fget
+            setattr(InstanceConfig, name, property(prop_method))
+
+        for attr in self._extra_attr:
+            setattr(InstanceConfig, attr, None)
 
         return InstanceConfig()
 
