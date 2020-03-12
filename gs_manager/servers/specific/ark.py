@@ -88,7 +88,9 @@ class ArkServerConfig(RconServerConfig):
         "start_directory",
     ]
 
-    _instance_properties: List[str] = ["ark_config", "start_command", "rcon_ip"]
+    _instance_properties: List[str] = [
+        "ark_config", "start_command", "rcon_ip"
+    ]
     _extra_attr: List[str] = ["_ark_config", "_start_command"]
 
     _ark_config: Optional[Dict[str, Any]] = None
@@ -478,6 +480,7 @@ class ArkServer(RconServer):
         status = self.invoke(
             super().install,
             app_id=app_id,
+            allow_run=allow_run,
             force=force,
             stop=stop,
             restart=restart,
