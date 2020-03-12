@@ -247,6 +247,7 @@ class SteamServer(BaseServer):
                 command_string=f"{reason}. Server restarting in 5 minutes",
                 do_print=False,
                 parallel=True,
+                current_instances=f"@each:{','.join(was_running)}",
             )
             self._wait(300 - self.config.pre_stop)
 
@@ -258,6 +259,7 @@ class SteamServer(BaseServer):
                 command_string=self.config.save_command,
                 do_print=False,
                 parallel=True,
+                current_instances=f"@each:{','.join(was_running)}",
             )
 
         self.set_instance(None, False)
@@ -267,6 +269,7 @@ class SteamServer(BaseServer):
             reason="New updates found.",
             verb="restarting",
             parallel=True,
+            current_instances=f"@each:{','.join(was_running)}",
         )
 
         self.set_instance(current_instance, multi_instance)
@@ -370,7 +373,7 @@ class SteamServer(BaseServer):
                     self.logger.info(f"VAC: {server_info['vac_enabled']}")
                     self.logger.info(f"version: {server_info['version']}")
                 else:
-                    self.logger.success(f"{self.config.name} is running")
+                    self.logger.success(f"{self.server_name} is running")
                 return STATUS_SUCCESS
             except NoResponseError:
                 self.logger.error(

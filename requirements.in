@@ -6,3 +6,4 @@ psutil
 pygtail
 watchdog
 steamfiles
+pyyaml

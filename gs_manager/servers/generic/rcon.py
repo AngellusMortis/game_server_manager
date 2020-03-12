@@ -96,6 +96,7 @@ class RconServer(SteamServer):
             try:
                 rcon.connect()
             except ConnectionRefusedError:
+                self.logger.debug("RCON connect failed")
                 is_accessible = False
         return is_accessible
 

@@ -75,16 +75,20 @@ class ArkServerConfig(RconServerConfig):
 
     _excluded_properties: List[str] = RconServerConfig._excluded_properties + [
         "start_command",
+        "ark_config",
+        "rcon_ip",
+    ]
+
+    _excluded_from_save: List[str] = [
         "spawn_process",
         "say_command",
         "stop_command",
         "save_command",
         "rcon_multi_port",
-        "ark_config",
         "start_directory",
     ]
 
-    _instance_properties: List[str] = ["ark_config", "start_command"]
+    _instance_properties: List[str] = ["ark_config", "start_command", "rcon_ip"]
     _extra_attr: List[str] = ["_ark_config", "_start_command"]
 
     _ark_config: Optional[Dict[str, Any]] = None
@@ -148,6 +152,11 @@ class ArkServerConfig(RconServerConfig):
             self._start_command = command
 
         return self._start_command
+
+    @property
+    def rcon_ip(self) -> str:
+        # ARK does not let you bind Steam IP and RCON seperately
+        return self.steam_query_ip
 
 
 class ArkServer(RconServer):
@@ -409,13 +418,25 @@ class ArkServer(RconServer):
         """ starts ARK server """
 
         self.logger.debug(self.config.start_command)
+        command = self.config.start_command
 
-        return self.invoke(
-            super().start,
-            no_verify=no_verify,
-            foreground=foreground,
-            start_command=self.config.start_command,
-        )
+        if self.config.parent is not None:
+            current_instance = self.config.parent.instance_name
+            self.set_instance(None, False)
+            return self.invoke(
+                super().start,
+                no_verify=no_verify,
+                foreground=foreground,
+                start_command=command,
+                current_instance=current_instance,
+            )
+        else:
+            return self.invoke(
+                super().start,
+                no_verify=no_verify,
+                foreground=foreground,
+                start_command=command,
+            )
 
     @require("steamcmd_path")
     @single_instance

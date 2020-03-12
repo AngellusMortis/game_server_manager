@@ -228,15 +228,15 @@ class BaseServer(EmptyServer):
         )
         if self.is_running():
             if self.is_accessible():
-                self.logger.success(f"\n{self.config.name} is running")
+                self.logger.success(f"\n{self.server_name} is running")
                 return STATUS_SUCCESS
             else:
                 self.logger.error(
-                    f"{self.config.name} is running but not accesible"
+                    f"{self.server_name} is running but not accesible"
                 )
                 return STATUS_PARTIAL_FAIL
         else:
-            self.logger.error(f"could not start {self.config.name}")
+            self.logger.error(f"could not start {self.server_name}")
             return STATUS_FAILED
 
     def _find_pid(self, require: bool = True) -> None:
@@ -244,8 +244,10 @@ class BaseServer(EmptyServer):
             self.config.start_command.replace('"', '\\"')
             .replace("?", "\\?")
             .replace("+", "\\+")
+            .replace("|", ".")
             .strip()
         )
+
         pids = self.run_command(
             "ps -ef --sort=start_time | "
             f'grep -i -P "(?<!grep -i |-c ){command}$" | '
@@ -258,7 +260,7 @@ class BaseServer(EmptyServer):
             if pid is not None and not pid == "":
                 self.run_command(f"ps -ef | grep {pid}")
 
-        if pids[0] is None and not pids[0] == "":
+        if pids[0] is None or pids[0] == "":
             if require:
                 raise click.ClickException("could not determine PID")
         else:
@@ -443,15 +445,15 @@ class BaseServer(EmptyServer):
 
         if self.is_running():
             if self.is_accessible():
-                self.logger.success(f"{self.config.name} is running")
+                self.logger.success(f"{self.server_name} is running")
                 return STATUS_SUCCESS
             else:
                 self.logger.error(
-                    f"{self.config.name} is running, but is not accessible"
+                    f"{self.server_name} is running, but is not accessible"
                 )
                 return STATUS_PARTIAL_FAIL
         else:
-            self.logger.warning(f"{self.config.name} is not running")
+            self.logger.warning(f"{self.server_name} is not running")
             return STATUS_FAILED
 
     @require("start_command")
@@ -517,17 +519,17 @@ class BaseServer(EmptyServer):
         """ starts gameserver """
 
         if self.is_running():
-            self.logger.warning(f"{self.config.name} is already running")
+            self.logger.warning(f"{self.server_name} is already running")
             return STATUS_PARTIAL_FAIL
 
         self._delete_pid_file()
-        self.logger.info(f"starting {self.config.name}...", nl=False)
+        self.logger.info(f"starting {self.server_name}...", nl=False)
 
         command = start_command or self.config.start_command
         popen_kwargs = {}
         if self.config.spawn_process and not foreground:
             log_file_path = get_server_path(
-                ["logs", f"{self.config.name}.log"]
+                ["logs", f"{self.backup_name}.log"]
             )
 
             command = f"nohup {command}"
@@ -624,7 +626,7 @@ class BaseServer(EmptyServer):
                     self.logger.info("notifiying users...")
                     self._wait(self.config.pre_stop)
 
-            self.logger.info(f"{verb} {self.config.name}...")
+            self.logger.info(f"{verb} {self.server_name}...")
 
             if force:
                 self.kill_server()
@@ -644,13 +646,13 @@ class BaseServer(EmptyServer):
                 )
 
             if self.is_running():
-                self.logger.error(f"could not stop {self.config.name}")
+                self.logger.error(f"could not stop {self.server_name}")
                 return STATUS_PARTIAL_FAIL
             else:
-                self.logger.success(f"{self.config.name} was stopped")
+                self.logger.success(f"{self.server_name} was stopped")
                 return STATUS_SUCCESS
         else:
-            self.logger.warning(f"{self.config.name} is not running")
+            self.logger.warning(f"{self.server_name} is not running")
             return STATUS_FAILED
 
     @multi_instance
@@ -702,7 +704,7 @@ class BaseServer(EmptyServer):
         """ edits a server file with your default editor """
 
         if not force and self.is_running():
-            self.logger.warning(f"{self.config.name} is still running")
+            self.logger.warning(f"{self.server_name} is still running")
             return STATUS_PARTIAL_FAIL
 
         file_path = get_server_path(edit_path)
@@ -777,6 +779,20 @@ class BaseServer(EmptyServer):
         backup_file = f"{self.backup_name}_{timestamp}.tar.gz"
 
         os.makedirs(backup_folder, exist_ok=True)
+
+        if self._command_exists("save_command"):
+            self.logger.info(f"Saving servers...")
+            current_instance = self.config.instance_name
+            multi_instance = self.config.multi_instance
+            self.set_instance(None, False)
+            self.invoke(
+                self.command,
+                command_string=self.config.save_command,
+                do_print=False,
+                parallel=True,
+                current_instance="@all",
+            )
+            self.set_instance(current_instance, multi_instance)
 
         self.logger.info(f"Making server backup ({backup_file})...")
         with tarfile.open(

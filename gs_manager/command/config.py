@@ -43,6 +43,7 @@ class BaseConfig:
     _serializers: Dict[str, Callable] = {}
 
     _excluded_properties: List[str] = ["global_options", "parent"]
+    _excluded_from_save: List[str] = []
 
     _options: Optional[List[str]] = None
     _types: Optional[List[type]] = None
@@ -72,6 +73,9 @@ class BaseConfig:
     def __dict__(self) -> dict:
         config_dict = {}
         for key in self._config_options:
+            if key in self._excluded_from_save:
+                continue
+
             value = getattr(self, key)
             if key in self._serializers:
                 value = self._serializers[key](value)
