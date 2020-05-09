@@ -158,12 +158,12 @@ def _run_parallel(
             f"spawning {context.command.name} for instance: {instance_name}"
         )
 
-        config_copy = server.config.copy()
-        server_copy: BaseServer = server.__class__(config_copy)
-        server_copy.set_instance(instance_name, multi_instance=True)
+        def callback_wrapper(*args, **kwargs):
+            server.set_instance(instance_name)
+            return callback(*args, **kwargs)
 
         p = Process(
-            target=surpress(callback), args=args, kwargs=kwargs, daemon=True,
+            target=surpress(callback_wrapper), args=args, kwargs=kwargs, daemon=True,
         )
         p.start()
         processes.append(p)

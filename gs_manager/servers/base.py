@@ -80,6 +80,7 @@ class BaseServerConfig(Config):
     backup_directory: str = ""
     backup_location: Optional[str] = None
     backup_days: int = 7
+    backup_extra_paths: Optional[List[str]] = []
 
     @property
     def global_options(self):
@@ -396,6 +397,15 @@ class BaseServer(EmptyServer):
         return output
 
     def invoke(self, method: Callable, *args, **kwargs) -> int:
+        if "current_instance" not in kwargs and self.config.parent is not None:
+            current_instance = self.config.parent.instance_name
+            multi_instance = self.config.parent.multi_instance
+            self.set_instance(None, False)
+            kwargs["current_instance"] = current_instance
+            response = self.context.invoke(method, *args, **kwargs)
+            self.set_instance(current_instance, multi_instance)
+            return response
+
         return self.context.invoke(method, *args, **kwargs)
 
     def kill_server(self) -> None:
@@ -803,6 +813,11 @@ class BaseServer(EmptyServer):
                 arcname=self.config.backup_directory,
             )
             tar.add(self.config.config_path, arcname=DEFAULT_CONFIG)
+            for path in self.config.backup_extra_paths:
+                if os.path.exists(path):
+                    tar.add(path, os.path.basename(path))
+                else:
+                    self.logger.warning(f"{path} does not exist")
 
         old_backups = []
         now = time.time()

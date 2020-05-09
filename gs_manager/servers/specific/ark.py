@@ -66,7 +66,7 @@ class ArkServerConfig(RconServerConfig):
     save_command: str = "SaveWorld"
     max_start: int = 120
     max_stop: int = 120
-    rcon_multi_port: bool = True
+    rcon_multi_part: bool = False
 
     workshop_branch: bool = True
     ark_map: str = "TheIsland"
@@ -84,7 +84,7 @@ class ArkServerConfig(RconServerConfig):
         "say_command",
         "stop_command",
         "save_command",
-        "rcon_multi_port",
+        "rcon_multi_part",
         "start_directory",
     ]
 

@@ -1,5 +1,6 @@
 import os
 from typing import Any, Dict
+from itertools import chain
 
 import click
 
@@ -26,6 +27,14 @@ class ServerType(GenericConfigType):
     @staticmethod
     def validate(value) -> Server:
         return ServerClass()(value)
+
+
+class ListFlatten(GenericConfigType):
+    @staticmethod
+    def validate(value):
+        if len(value) > 0 and isinstance(value[0], list):
+            value = list(chain.from_iterable(value))
+        return value
 
 
 class ServerFileType(GenericConfigType):

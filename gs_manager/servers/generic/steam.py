@@ -12,6 +12,7 @@ import requests
 from steamfiles import acf
 
 from gs_manager.command import Config, ServerCommandClass
+from gs_manager.command.validators import GenericConfigType, ListFlatten
 from gs_manager.decorators import multi_instance, require, single_instance
 from gs_manager.servers.base import (
     STATUS_FAILED,
@@ -45,6 +46,13 @@ class SteamServerConfig(BaseServerConfig):
     steam_password: str = None
     steam_requires_login: bool = False
     app_id: int = None
+
+    _validators: Dict[str, List[GenericConfigType]] = {
+        **BaseServerConfig._validators,
+        **{
+            "workshop_items": [ListFlatten],
+        },
+    }
 
     @property
     def global_options(self):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import inspect
 import os
 from collections.abc import Iterable
@@ -117,7 +118,11 @@ class BaseConfig:
     ) -> None:
 
         for key, value in config_dict.items():
-            if not (ignore_unknown or key in self._config_options):
+            if not (
+                ignore_unknown
+                or key in self._config_options
+                or key.startswith("x-")
+            ):
                 raise ValueError(f"Unknown config option: {key}")
             elif key not in self._config_options or value is None:
                 continue
@@ -126,6 +131,10 @@ class BaseConfig:
 
             expected_type = self.get_type_for_param(key)
             if (expected_type == bool and not ignore_bool) or has_content:
+                if isinstance(value, dict):
+                    new_value = value.copy()
+                    value = getattr(self, key)
+                    value.update(new_value)
                 setattr(self, key, value)
 
     def _update_config_from_context(self, context: click.Context) -> None:
@@ -221,6 +230,7 @@ class Config(BaseConfig):
     def current_instance(self) -> BaseConfig:
         if self.instance_name is None:
             return self
+
         return self.get_instance(self.instance_name)
 
     def get_instance(self, name="default") -> BaseConfig:
@@ -310,7 +320,7 @@ class Config(BaseConfig):
         instance_config._excluded_properties = self._excluded_properties
 
         for option in self._config_options:
-            setattr(instance_config, option, getattr(self, option))
+            setattr(instance_config, option, deepcopy(getattr(self, option)))
 
         instance_config._update_config_from_dict(
             instance_dict, ignore_unknown=True
